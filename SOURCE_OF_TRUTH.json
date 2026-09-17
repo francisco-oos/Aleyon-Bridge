@@ -22,8 +22,12 @@
     "core_tests": 8,
     "static_qa": "PASS",
     "java_stub_compile": "PASS",
-    "production_java_files": 22,
-    "android_sdk_build": "PENDING",
+    "production_java_files": 21,
+    "android_sdk_build": "PASS",
+    "android_build_environment": "GitHub Actions / Android SDK 35 / Java 17 / Gradle 8.9",
+    "android_build_run_id": 35257840693,
+    "apk_artifact": "Aleyon-Bridge-v0.4.0-alpha1-debug",
+    "apk_artifact_sha256": "829747a38ab702d5b0195473c3670d3737ac5f6c4dabd8e0864c0d1050a6c80f",
     "physical_gemini_qa": "PENDING"
   }
 }
