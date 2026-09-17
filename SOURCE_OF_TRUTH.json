@@ -1,0 +1,29 @@
+{
+  "product": "Aleyon Bridge",
+  "version": "0.4.0-alpha1",
+  "date": "2026-09-17",
+  "authority": {
+    "profile": "local SessionJournal",
+    "learning_memory": "local LearningStore",
+    "session_engine": "Gemini app canonical chat",
+    "voice_surface": "Gemini Live"
+  },
+  "invariants": [
+    "one canonical Gemini chat per profile",
+    "no notebook runtime",
+    "no attach/detach runtime",
+    "context is compacted by Aleyon before injection",
+    "session report is scoped by SESSION_ID",
+    "learning events require evidence in accessible session delta",
+    "Gemini visual artifacts are not duplicated by Bridge"
+  ],
+  "baseline_reference": "Aleyon_Gemini_Bridge_v0.3.0-alpha4_CHATGPT_FIX.zip",
+  "qa": {
+    "core_tests": 8,
+    "static_qa": "PASS",
+    "java_stub_compile": "PASS",
+    "production_java_files": 22,
+    "android_sdk_build": "PENDING",
+    "physical_gemini_qa": "PENDING"
+  }
+}
