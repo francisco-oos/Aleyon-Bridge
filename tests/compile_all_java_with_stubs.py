@@ -1,51 +1,169 @@
 #!/usr/bin/env python3
-"""Compile every production Java source against tiny API stubs when Android SDK is unavailable."""
+"""
+Compile every production Java source against tiny API stubs.
+
+Purpose: catch Java syntax/internal-reference regressions in environments where
+Android SDK is unavailable. This is not a substitute for Gradle/Android SDK
+compilation or device QA.
+"""
 from pathlib import Path
 import shutil, subprocess, sys, textwrap
-ROOT=Path(__file__).resolve().parents[1];TMP=ROOT/'.full-java-stub-test'
-if TMP.exists():shutil.rmtree(TMP)
-src=TMP/'src';out=TMP/'out';src.mkdir(parents=True);out.mkdir(parents=True)
-STUBS={
-'android/content/Context.java':'''package android.content; import android.content.pm.PackageManager; import android.content.res.AssetManager; public class Context { public static final int MODE_PRIVATE=0; public static final String CLIPBOARD_SERVICE="clipboard",WINDOW_SERVICE="window"; public SharedPreferences getSharedPreferences(String n,int m){return null;} public Object getSystemService(String n){return null;} public Context getApplicationContext(){return this;} public PackageManager getPackageManager(){return null;} public AssetManager getAssets(){return null;} public void startActivity(Intent i){} public Object getContentResolver(){return null;} }''',
-'android/app/Activity.java':'''package android.app; import android.content.Context; import android.os.Bundle; public class Activity extends Context { protected void onCreate(Bundle b){} protected void onResume(){} public void onBackPressed(){} public void setContentView(Object v){} public void runOnUiThread(Runnable r){r.run();} }''',
-'android/content/SharedPreferences.java':'''package android.content; import java.util.Set; public interface SharedPreferences { String getString(String k,String d); long getLong(String k,long d); boolean getBoolean(String k,boolean d); Set<String> getStringSet(String k,Set<String>d); Editor edit(); interface Editor { Editor putString(String k,String v); Editor putLong(String k,long v); Editor putBoolean(String k,boolean v); Editor putStringSet(String k,Set<String>v); Editor remove(String k); void apply(); } }''',
-'android/content/Intent.java':'''package android.content; public class Intent { public static final String ACTION_SEND="android.intent.action.SEND",EXTRA_TEXT="android.intent.extra.TEXT"; public static final int FLAG_ACTIVITY_NEW_TASK=0x10000000,FLAG_ACTIVITY_REORDER_TO_FRONT=0x00020000; public Intent(){} public Intent(String a){} public Intent(Context c,Class<?>cls){} public Intent addFlags(int f){return this;} public Intent setType(String t){return this;} public Intent putExtra(String k,String v){return this;} public static Intent createChooser(Intent i,String t){return i;} }''',
-'android/content/ComponentName.java':'''package android.content; public class ComponentName { public ComponentName(Context c,Class<?>k){} public String flattenToString(){return "";} }''',
-'android/content/ClipData.java':'''package android.content; public class ClipData { public static ClipData newPlainText(CharSequence l,CharSequence t){return new ClipData();} }''',
-'android/content/ClipboardManager.java':'''package android.content; public class ClipboardManager { public void setPrimaryClip(ClipData c){} }''',
-'android/content/pm/PackageManager.java':'''package android.content.pm; import android.content.Intent; public class PackageManager { public static class NameNotFoundException extends Exception{} public Object getPackageInfo(String p,int f)throws NameNotFoundException{return null;} public Intent getLaunchIntentForPackage(String p){return null;} }''',
-'android/content/res/AssetManager.java':'''package android.content.res; import java.io.*; public class AssetManager { public InputStream open(String p)throws IOException{return null;} }''',
-'android/os/Bundle.java':'''package android.os; import java.util.HashMap; public class Bundle extends HashMap<String,Object>{public void putCharSequence(String k,CharSequence v){put(k,v);}}''',
-'android/os/Looper.java':'''package android.os; public class Looper { public static Looper getMainLooper(){return new Looper();} }''',
-'android/os/Handler.java':'''package android.os; public class Handler { public Handler(Looper l){} public boolean post(Runnable r){return true;} public boolean postDelayed(Runnable r,long d){return true;} public void removeCallbacks(Runnable r){} }''',
-'android/provider/Settings.java':'''package android.provider; public class Settings { public static final String ACTION_ACCESSIBILITY_SETTINGS="android.settings.ACCESSIBILITY_SETTINGS"; public static class Secure { public static final String ENABLED_ACCESSIBILITY_SERVICES="enabled_accessibility_services"; public static String getString(Object r,String k){return "";} } }''',
-'android/text/TextUtils.java':'''package android.text; import java.util.*; public class TextUtils { public static boolean isEmpty(CharSequence s){return s==null||s.length()==0;} public static class SimpleStringSplitter implements Iterator<String>{public SimpleStringSplitter(char c){} public void setString(String s){} public boolean hasNext(){return false;} public String next(){return "";}} }''',
-'android/webkit/JavascriptInterface.java':'''package android.webkit; import java.lang.annotation.*; @Retention(RetentionPolicy.RUNTIME) @Target(ElementType.METHOD) public @interface JavascriptInterface{}''',
-'android/webkit/WebViewClient.java':'''package android.webkit; public class WebViewClient{}''',
-'android/webkit/WebSettings.java':'''package android.webkit; public class WebSettings { public void setJavaScriptEnabled(boolean b){} public void setDomStorageEnabled(boolean b){} public void setAllowFileAccess(boolean b){} public void setAllowContentAccess(boolean b){} public void setAllowFileAccessFromFileURLs(boolean b){} public void setAllowUniversalAccessFromFileURLs(boolean b){} }''',
-'android/webkit/WebView.java':'''package android.webkit; import android.content.Context; public class WebView { public WebView(Context c){} public WebSettings getSettings(){return new WebSettings();} public static void setWebContentsDebuggingEnabled(boolean b){} public void setWebViewClient(WebViewClient c){} public void addJavascriptInterface(Object o,String n){} public void loadUrl(String u){} public boolean canGoBack(){return false;} public void goBack(){} public void evaluateJavascript(String s,Object cb){} }''',
-'android/widget/Toast.java':'''package android.widget; import android.content.Context; public class Toast { public static final int LENGTH_SHORT=0; public static Toast makeText(Context c,CharSequence s,int d){return new Toast();} public void show(){} }''',
-'android/accessibilityservice/AccessibilityService.java':'''package android.accessibilityservice; import android.content.Context; import android.view.accessibility.*; public abstract class AccessibilityService extends Context { public static final int GLOBAL_ACTION_BACK=1; protected void onServiceConnected(){} public abstract void onAccessibilityEvent(AccessibilityEvent e); public abstract void onInterrupt(); public void onDestroy(){} public AccessibilityNodeInfo getRootInActiveWindow(){return null;} public java.util.List<AccessibilityWindowInfo> getWindows(){return java.util.Collections.emptyList();} public boolean performGlobalAction(int a){return true;} }''',
-'android/view/accessibility/AccessibilityEvent.java':'''package android.view.accessibility; public class AccessibilityEvent { public static final int TYPE_WINDOWS_CHANGED=4194304; public CharSequence getPackageName(){return null;} public int getEventType(){return 0;} }''',
-'android/view/accessibility/AccessibilityWindowInfo.java':'''package android.view.accessibility; public class AccessibilityWindowInfo { public static final int TYPE_APPLICATION=1; public AccessibilityNodeInfo getRoot(){return null;} public int getType(){return TYPE_APPLICATION;} public boolean isActive(){return false;} public boolean isFocused(){return false;} }''',
-'android/view/accessibility/AccessibilityNodeInfo.java':'''package android.view.accessibility; import android.os.Bundle; public class AccessibilityNodeInfo { public static final int ACTION_SCROLL_FORWARD=4096,ACTION_SCROLL_BACKWARD=8192,ACTION_CLICK=16,ACTION_SET_TEXT=2097152; public static final String ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE="ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE"; public CharSequence getText(){return null;} public CharSequence getContentDescription(){return null;} public CharSequence getHintText(){return null;} public CharSequence getPackageName(){return null;} public int getChildCount(){return 0;} public AccessibilityNodeInfo getChild(int i){return null;} public AccessibilityNodeInfo getParent(){return null;} public boolean isEditable(){return false;} public boolean isMultiLine(){return false;} public boolean isCheckable(){return false;} public boolean isChecked(){return false;} public boolean isClickable(){return false;} public boolean isEnabled(){return false;} public boolean isScrollable(){return false;} public boolean performAction(int a){return false;} public boolean performAction(int a,Bundle b){return false;} }''',
-'android/graphics/Color.java':'''package android.graphics; public class Color { public static final int WHITE=0xffffffff; public static int rgb(int r,int g,int b){return 0;} public static int argb(int a,int r,int g,int b){return 0;} }''',
-'android/graphics/PixelFormat.java':'''package android.graphics; public class PixelFormat { public static final int TRANSLUCENT=-3; }''',
-'android/graphics/drawable/GradientDrawable.java':'''package android.graphics.drawable; public class GradientDrawable { public static final int OVAL=1; public void setColor(int c){} public void setShape(int s){} public void setCornerRadius(float r){} public void setStroke(int w,int c){} }''',
-'android/view/Gravity.java':'''package android.view; public class Gravity { public static final int END=1,CENTER_VERTICAL=2; }''',
-'android/view/View.java':'''package android.view; public class View { public interface OnClickListener{void onClick(View v);} public void setOnClickListener(OnClickListener l){} }''',
-'android/view/WindowManager.java':'''package android.view; public interface WindowManager { void addView(View v,LayoutParams p); void removeView(View v); class LayoutParams { public static final int TYPE_ACCESSIBILITY_OVERLAY=2032,FLAG_NOT_FOCUSABLE=8,FLAG_LAYOUT_IN_SCREEN=256,WRAP_CONTENT=-2; public int gravity,x; public LayoutParams(int w,int h,int t,int f,int p){} } }''',
-'android/widget/TextView.java':'''package android.widget; import android.content.Context; import android.view.View; public class TextView extends View { public TextView(Context c){} public void setText(CharSequence s){} public void setTextSize(float s){} public void setTextColor(int c){} public void setPadding(int a,int b,int c,int d){} }''',
-'android/widget/Button.java':'''package android.widget; import android.content.Context; public class Button extends TextView { public Button(Context c){super(c);} public void setAllCaps(boolean b){} public void setBackground(Object d){} }''',
-'android/widget/LinearLayout.java':'''package android.widget; import android.content.Context; import android.view.View; public class LinearLayout extends View { public static final int VERTICAL=1; public LinearLayout(Context c){} public void setOrientation(int o){} public void setPadding(int a,int b,int c,int d){} public void setBackground(Object d){} public void addView(View v){} }''',
-'org/json/JSONException.java':'''package org.json; public class JSONException extends Exception { public JSONException(String s){super(s);} }''',
-'org/json/JSONObject.java':'''package org.json; public class JSONObject { public JSONObject(){} public JSONObject(String s)throws JSONException{} public JSONObject put(String k,Object v)throws JSONException{return this;} public String getString(String k)throws JSONException{return "";} public String optString(String k){return "";} public String optString(String k,String d){return d;} public boolean optBoolean(String k,boolean d){return d;} public int optInt(String k,int d){return d;} public long optLong(String k,long d){return d;} public JSONArray optJSONArray(String k){return null;} public JSONObject optJSONObject(String k){return null;} public String toString(){return "{}";} }''',
-'org/json/JSONArray.java':'''package org.json; public class JSONArray { public JSONArray(){} public JSONArray(String s)throws JSONException{} public JSONArray put(Object v){return this;} public int length(){return 0;} public Object get(int i)throws JSONException{return null;} public JSONObject optJSONObject(int i){return null;} public String toString(){return "[]";} }'''
+
+ROOT = Path(__file__).resolve().parents[1]
+TMP = ROOT / ".full-java-stub-test"
+if TMP.exists():
+    shutil.rmtree(TMP)
+src = TMP / "src"
+out = TMP / "out"
+src.mkdir(parents=True)
+out.mkdir(parents=True)
+
+STUBS = {
+"android/content/Context.java": '''
+package android.content;
+import android.content.pm.PackageManager;
+import android.content.res.AssetManager;
+public class Context {
+  public static final int MODE_PRIVATE=0;
+  public static final String CLIPBOARD_SERVICE="clipboard", WINDOW_SERVICE="window";
+  public SharedPreferences getSharedPreferences(String n,int m){return null;}
+  public Object getSystemService(String n){return null;}
+  public Context getApplicationContext(){return this;}
+  public PackageManager getPackageManager(){return null;}
+  public AssetManager getAssets(){return null;}
+  public void startActivity(Intent i){}
+  public Object getContentResolver(){return null;}
 }
-for rel,content in STUBS.items():
- p=src/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(textwrap.dedent(content),encoding='utf-8')
-prod=[str(p) for p in (ROOT/'app/src/main/java').rglob('*.java')];stubs=[str(p) for p in src.rglob('*.java')]
-proc=subprocess.run(['javac','-source','17','-target','17','-d',str(out)]+stubs+prod,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+''',
+"android/app/Activity.java": '''
+package android.app;
+import android.content.Context; import android.os.Bundle;
+public class Activity extends Context {
+  protected void onCreate(Bundle b){} protected void onResume(){}
+  public void onBackPressed(){} public void setContentView(Object v){}
+  public void runOnUiThread(Runnable r){r.run();}
+}
+''',
+"android/content/SharedPreferences.java": '''
+package android.content;
+import java.util.Set;
+public interface SharedPreferences {
+ String getString(String k,String d); long getLong(String k,long d); boolean getBoolean(String k,boolean d);
+ Set<String> getStringSet(String k,Set<String> d); Editor edit();
+ interface Editor {
+   Editor putString(String k,String v); Editor putLong(String k,long v); Editor putBoolean(String k,boolean v);
+   Editor putStringSet(String k,Set<String> v); Editor remove(String k); void apply();
+ }
+}
+''',
+"android/content/Intent.java": '''
+package android.content;
+public class Intent {
+ public static final String ACTION_SEND="android.intent.action.SEND", EXTRA_TEXT="android.intent.extra.TEXT";
+ public static final int FLAG_ACTIVITY_NEW_TASK=0x10000000, FLAG_ACTIVITY_REORDER_TO_FRONT=0x00020000;
+ public Intent(){} public Intent(String a){} public Intent(Context c,Class<?> cls){}
+ public Intent addFlags(int f){return this;} public Intent setType(String t){return this;}
+ public Intent putExtra(String k,String v){return this;}
+ public static Intent createChooser(Intent i,String t){return i;}
+}
+''',
+"android/content/ComponentName.java": '''
+package android.content;
+public class ComponentName { public ComponentName(Context c,Class<?> k){} public String flattenToString(){return "";} }
+''',
+"android/content/ClipData.java": '''package android.content; public class ClipData { public static ClipData newPlainText(CharSequence l,CharSequence t){return new ClipData();} }''',
+"android/content/ClipboardManager.java": '''package android.content; public class ClipboardManager { public void setPrimaryClip(ClipData c){} }''',
+"android/content/pm/PackageManager.java": '''
+package android.content.pm; import android.content.Intent;
+public class PackageManager {
+ public static class NameNotFoundException extends Exception{}
+ public Object getPackageInfo(String p,int f) throws NameNotFoundException {return null;}
+ public Intent getLaunchIntentForPackage(String p){return null;}
+}
+''',
+"android/content/res/AssetManager.java": '''package android.content.res; import java.io.*; public class AssetManager { public InputStream open(String p) throws IOException{return null;} }''',
+"android/os/Bundle.java": '''package android.os; import java.util.HashMap; public class Bundle extends HashMap<String,Object> { public void putCharSequence(String k,CharSequence v){put(k,v);} }''',
+"android/os/Looper.java": '''package android.os; public class Looper { public static Looper getMainLooper(){return new Looper();} }''',
+"android/os/Handler.java": '''package android.os; public class Handler { public Handler(Looper l){} public boolean post(Runnable r){return true;} public boolean postDelayed(Runnable r,long d){return true;} public void removeCallbacks(Runnable r){} }''',
+"android/provider/Settings.java": '''
+package android.provider;
+public class Settings {
+ public static final String ACTION_ACCESSIBILITY_SETTINGS="android.settings.ACCESSIBILITY_SETTINGS";
+ public static class Secure { public static final String ENABLED_ACCESSIBILITY_SERVICES="enabled_accessibility_services"; public static String getString(Object r,String k){return "";} }
+}
+''',
+"android/text/TextUtils.java": '''
+package android.text; import java.util.*;
+public class TextUtils {
+ public static boolean isEmpty(CharSequence s){return s==null||s.length()==0;}
+ public static class SimpleStringSplitter implements Iterator<String> { public SimpleStringSplitter(char c){} public void setString(String s){} public boolean hasNext(){return false;} public String next(){return "";} }
+}
+''',
+"android/webkit/JavascriptInterface.java": '''package android.webkit; import java.lang.annotation.*; @Retention(RetentionPolicy.RUNTIME) @Target(ElementType.METHOD) public @interface JavascriptInterface {}''',
+"android/webkit/WebViewClient.java": '''package android.webkit; public class WebViewClient {}''',
+"android/webkit/WebSettings.java": '''package android.webkit; public class WebSettings { public void setJavaScriptEnabled(boolean b){} public void setDomStorageEnabled(boolean b){} public void setAllowFileAccess(boolean b){} public void setAllowContentAccess(boolean b){} public void setAllowFileAccessFromFileURLs(boolean b){} public void setAllowUniversalAccessFromFileURLs(boolean b){} }''',
+"android/webkit/WebView.java": '''
+package android.webkit; import android.content.Context;
+public class WebView { public WebView(Context c){} public WebSettings getSettings(){return new WebSettings();} public static void setWebContentsDebuggingEnabled(boolean b){} public void setWebViewClient(WebViewClient c){} public void addJavascriptInterface(Object o,String n){} public void loadUrl(String u){} public boolean canGoBack(){return false;} public void goBack(){} public void evaluateJavascript(String s,Object cb){} }
+''',
+"android/widget/Toast.java": '''package android.widget; import android.content.Context; public class Toast { public static final int LENGTH_SHORT=0; public static Toast makeText(Context c,CharSequence s,int d){return new Toast();} public void show(){} }''',
+"android/accessibilityservice/AccessibilityService.java": '''
+package android.accessibilityservice; import android.content.Context; import android.view.accessibility.*;
+public abstract class AccessibilityService extends Context { public static final int GLOBAL_ACTION_BACK=1; protected void onServiceConnected(){} public abstract void onAccessibilityEvent(AccessibilityEvent e); public abstract void onInterrupt(); public void onDestroy(){} public AccessibilityNodeInfo getRootInActiveWindow(){return null;} public java.util.List<AccessibilityWindowInfo> getWindows(){return java.util.Collections.emptyList();} public boolean performGlobalAction(int action){return true;} }
+''',
+"android/view/accessibility/AccessibilityEvent.java": '''package android.view.accessibility; public class AccessibilityEvent { public static final int TYPE_WINDOWS_CHANGED=4194304; public CharSequence getPackageName(){return null;} public int getEventType(){return 0;} }''',
+"android/view/accessibility/AccessibilityWindowInfo.java": '''
+package android.view.accessibility;
+public class AccessibilityWindowInfo {
+ public static final int TYPE_APPLICATION=1;
+ public AccessibilityNodeInfo getRoot(){return null;} public int getType(){return TYPE_APPLICATION;}
+ public boolean isActive(){return false;} public boolean isFocused(){return false;}
+}
+''',
+"android/view/accessibility/AccessibilityNodeInfo.java": '''
+package android.view.accessibility; import android.os.Bundle;
+public class AccessibilityNodeInfo {
+ public static final int ACTION_SCROLL_FORWARD=4096,ACTION_SCROLL_BACKWARD=8192,ACTION_CLICK=16,ACTION_SET_TEXT=2097152;
+ public static final String ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE="ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE";
+ public CharSequence getText(){return null;} public CharSequence getContentDescription(){return null;} public CharSequence getHintText(){return null;} public CharSequence getPackageName(){return null;}
+ public int getChildCount(){return 0;} public AccessibilityNodeInfo getChild(int i){return null;} public AccessibilityNodeInfo getParent(){return null;}
+ public boolean isEditable(){return false;} public boolean isMultiLine(){return false;} public boolean isCheckable(){return false;} public boolean isChecked(){return false;} public boolean isClickable(){return false;} public boolean isEnabled(){return false;} public boolean isScrollable(){return false;}
+ public boolean performAction(int a){return false;} public boolean performAction(int a,Bundle b){return false;}
+}
+''',
+"android/graphics/Color.java": '''package android.graphics; public class Color { public static final int WHITE=0xffffffff; public static int rgb(int r,int g,int b){return 0;} public static int argb(int a,int r,int g,int b){return 0;} }''',
+"android/graphics/PixelFormat.java": '''package android.graphics; public class PixelFormat { public static final int TRANSLUCENT=-3; }''',
+"android/graphics/drawable/GradientDrawable.java": '''package android.graphics.drawable; public class GradientDrawable { public static final int OVAL=1; public void setColor(int c){} public void setShape(int s){} public void setCornerRadius(float r){} public void setStroke(int w,int c){} }''',
+"android/view/Gravity.java": '''package android.view; public class Gravity { public static final int END=1,CENTER_VERTICAL=2; }''',
+"android/view/View.java": '''package android.view; public class View { public interface OnClickListener{void onClick(View v);} public void setOnClickListener(OnClickListener l){} }''',
+"android/view/WindowManager.java": '''
+package android.view;
+public interface WindowManager { void addView(View v,LayoutParams p); void removeView(View v); public static class LayoutParams { public static final int TYPE_ACCESSIBILITY_OVERLAY=2032,FLAG_NOT_FOCUSABLE=8,FLAG_LAYOUT_IN_SCREEN=256,WRAP_CONTENT=-2; public int gravity,x; public LayoutParams(int w,int h,int t,int f,int p){} } }
+''',
+"android/widget/TextView.java": '''package android.widget; import android.content.Context; import android.view.View; public class TextView extends View { public TextView(Context c){} public void setText(CharSequence s){} public void setTextSize(float s){} public void setTextColor(int c){} public void setPadding(int a,int b,int c,int d){} }''',
+"android/widget/Button.java": '''package android.widget; import android.content.Context; public class Button extends TextView { public Button(Context c){super(c);} public void setAllCaps(boolean b){} public void setBackground(Object d){} }''',
+"android/widget/LinearLayout.java": '''package android.widget; import android.content.Context; import android.view.View; public class LinearLayout extends View { public static final int VERTICAL=1; public LinearLayout(Context c){} public void setOrientation(int o){} public void setPadding(int a,int b,int c,int d){} public void setBackground(Object d){} public void addView(View v){} }''',
+"org/json/JSONException.java": '''package org.json; public class JSONException extends Exception { public JSONException(String s){super(s);} }''',
+"org/json/JSONObject.java": '''
+package org.json;
+public class JSONObject { public JSONObject(){} public JSONObject(String s) throws JSONException{} public JSONObject put(String k,Object v) throws JSONException{return this;} public String getString(String k) throws JSONException{return "";} public String optString(String k){return "";} public String optString(String k,String d){return d;} public boolean optBoolean(String k,boolean d){return d;} public int optInt(String k,int d){return d;} public long optLong(String k,long d){return d;} public JSONArray optJSONArray(String k){return null;} public JSONObject optJSONObject(String k){return null;} public String toString(){return "{}";} }
+''',
+"org/json/JSONArray.java": '''package org.json; public class JSONArray { public JSONArray(){} public JSONArray(String s) throws JSONException{} public JSONArray put(Object v){return this;} public int length(){return 0;} public Object get(int i) throws JSONException{return null;} public JSONObject optJSONObject(int i){return null;} public String toString(){return "[]";} }''',
+}
+
+for rel, content in STUBS.items():
+    p = src / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(textwrap.dedent(content), encoding="utf-8")
+
+prod = [str(p) for p in (ROOT / "app/src/main/java").rglob("*.java")]
+stubs = [str(p) for p in src.rglob("*.java")]
+cmd = ["javac", "-source", "17", "-target", "17", "-d", str(out)] + stubs + prod
+proc = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 if proc.returncode:
- print('FAIL full Java stub compile');print(proc.stdout);print(proc.stderr);sys.exit(proc.returncode)
-print(f'PASS full Java stub compile: {len(prod)} production files');shutil.rmtree(TMP,ignore_errors=True)
+    print("FAIL full Java stub compile")
+    print(proc.stdout)
+    print(proc.stderr)
+    sys.exit(proc.returncode)
+print(f"PASS full Java stub compile: {len(prod)} production files")
+shutil.rmtree(TMP, ignore_errors=True)

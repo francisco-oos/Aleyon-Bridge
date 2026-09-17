@@ -7,7 +7,11 @@ echo.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\build_windows.ps1"
 set ERR=%ERRORLEVEL%
 echo.
-if not "%ERR%"=="0" (echo La compilacion termino con error.) else (echo Compilacion terminada correctamente.)
+if not "%ERR%"=="0" (
+  echo La compilacion termino con error.
+) else (
+  echo Compilacion terminada correctamente.
+)
 echo.
 pause
 exit /b %ERR%

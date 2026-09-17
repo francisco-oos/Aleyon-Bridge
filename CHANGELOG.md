@@ -45,7 +45,7 @@ Cambio de arquitectura deliberado a partir de los aprendizajes de Aleyon Bridge 
 ```text
 PASS core tests: 8
 PASS static QA
-PASS full Java stub compile: 22 production files
+PASS full Java stub compile: 21 production files
 ```
 
 Pendiente: build Gradle con Android SDK y QA físico de selectores/transcripción en la versión de Gemini instalada.
