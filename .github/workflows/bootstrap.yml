@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - "bootstrap/source.b64"
+      - "bootstrap/parts/**"
       - ".github/workflows/bootstrap.yml"
 
 permissions:
@@ -22,7 +22,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d bootstrap/source.b64 > /tmp/Aleyon-Bridge-0.4.0-alpha1-source.zip
+          cat bootstrap/parts/00 bootstrap/parts/01 bootstrap/parts/02 bootstrap/parts/03 bootstrap/parts/04 > /tmp/source.b64
+          test "$(wc -c < /tmp/source.b64)" -eq 85124
+          base64 -d /tmp/source.b64 > /tmp/Aleyon-Bridge-0.4.0-alpha1-source.zip
           echo "bae9fcc09b10349433c367e998dc5bcbe88a72930939b2f6b8930cc3b40b62f5  /tmp/Aleyon-Bridge-0.4.0-alpha1-source.zip" | sha256sum -c -
           unzip -oq /tmp/Aleyon-Bridge-0.4.0-alpha1-source.zip -d .
           rm -rf bootstrap
