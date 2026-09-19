@@ -34,7 +34,7 @@ check('removeNativeLocalProfile' in html and 'deleteProfileEverywhere' not in ht
 # Native state-machine contracts.
 check('AutomationRequest.Type.START_LIVE_SESSION' in main,'Live request not emitted natively')
 check('AutomationRequest.Type.START_CHAT_SESSION' in main,'Chat request not emitted natively')
-check('transport.startLive(root())' in service,'Live request does not resolve through the narrow transport capability')
+check('artemisLiveAgent.nextLive' in service and 'transport.startLive(r)' in service,'Live request is not governed through Artemis + narrow transport capability')
 check('GeminiStateObserver.observe' in service and 'o.liveAvailable' in service and 'journal.baselineText' in service,'Context settle/capability verifier missing')
 check('SessionReportParser.parse' in service,'Close report verifier missing')
 check('learning.commitVerified' in service,'Local commit verification missing')
@@ -48,7 +48,7 @@ check('canonicalTitle=conversations.title(profile)' in service,'Canonical conver
 check('conversations.markMissing(profile)' in service and 'rebuildingConversation=true' in service,'Missing canonical chat does not trigger reconstruction')
 check('transport.openCanonicalConversation' in service and 'transport.openConversationSearch' in service,'Canonical chat reuse/search flow missing')
 check('transport.createNormalConversation' in service and 'transport.setCanonicalTitle' in service,'Canonical reconstruction/rename flow missing')
-check('prompts.contextCapsule(profile,ledger,sessionId,"LIVE".equals(sessionMode),rebuildingConversation)' in service,'Reconstruction-aware context capsule missing')
+check('prompts.contextCapsule(profile,ledger,sessionId' in service and '"LIVE".equals(sessionMode),rebuildingConversation)' in service,'Reconstruction-aware context capsule missing')
 
 if errors:
     print('FAIL interaction QA');[print(' -',e) for e in errors];sys.exit(1)
