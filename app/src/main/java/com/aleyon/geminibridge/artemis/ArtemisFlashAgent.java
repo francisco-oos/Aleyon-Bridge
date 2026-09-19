@@ -30,9 +30,16 @@ public final class ArtemisFlashAgent {
         CREATE_NORMAL_CHAT,
         WRITE_CONTEXT,
         SUBMIT_CONTEXT,
+        OPEN_CHAT_OPTIONS,
+        CHOOSE_RENAME,
+        WRITE_TITLE,
+        SAVE_TITLE,
         START_LIVE,
+        END_LIVE,
         COMPLETE_CONTEXT,
+        COMPLETE_RENAME,
         COMPLETE_LIVE,
+        COMPLETE_END_LIVE,
         COMPLETE_REUSE,
         COMPLETE_REBUILD,
         FAIL_CLOSED
@@ -88,6 +95,46 @@ public final class ArtemisFlashAgent {
                 yield Action.FAIL_CLOSED;
             }
             case LIVE_ACTIVE -> Action.BACK;
+            default -> Action.FAIL_CLOSED;
+        };
+        return replayOr(o.state,fallback);
+    }
+
+    /**
+     * Learns the provider-specific rename routine without hard-coding a
+     * sequence in the service. Every successful action is followed by a fresh
+     * observation before another action is chosen.
+     */
+    public Action nextRename(TransportObservation o,
+            boolean renameActionVisible,
+            boolean renameEditorVisible,
+            boolean titlePrepared,
+            boolean saveIssued){
+        if(o==null)return Action.FAIL_CLOSED;
+        if(saveIssued && o.state==TransportState.NORMAL_CHAT && !renameEditorVisible)
+            return replayOr(o.state,Action.COMPLETE_RENAME);
+        Action fallback;
+        if(renameEditorVisible){
+            fallback=titlePrepared?Action.SAVE_TITLE:Action.WRITE_TITLE;
+        }else if(renameActionVisible){
+            fallback=Action.CHOOSE_RENAME;
+        }else if(o.state==TransportState.NORMAL_CHAT){
+            fallback=Action.OPEN_CHAT_OPTIONS;
+        }else if(o.state==TransportState.CONSENT_REQUIRED||o.state==TransportState.UNAVAILABLE){
+            fallback=Action.WAIT;
+        }else{
+            fallback=Action.FAIL_CLOSED;
+        }
+        return replayOr(o.state,fallback);
+    }
+
+    /** Ends Live reactively and verifies the return to normal chat. */
+    public Action nextEndLive(TransportObservation o){
+        if(o==null)return Action.FAIL_CLOSED;
+        if(o.state==TransportState.NORMAL_CHAT)return replayOr(o.state,Action.COMPLETE_END_LIVE);
+        Action fallback=switch(o.state){
+            case LIVE_ACTIVE -> Action.END_LIVE;
+            case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
             default -> Action.FAIL_CLOSED;
         };
         return replayOr(o.state,fallback);
@@ -191,6 +238,11 @@ public final class ArtemisFlashAgent {
                 ||a==Action.CREATE_NORMAL_CHAT
                 ||a==Action.WRITE_CONTEXT
                 ||a==Action.SUBMIT_CONTEXT
-                ||a==Action.START_LIVE;
+                ||a==Action.OPEN_CHAT_OPTIONS
+                ||a==Action.CHOOSE_RENAME
+                ||a==Action.WRITE_TITLE
+                ||a==Action.SAVE_TITLE
+                ||a==Action.START_LIVE
+                ||a==Action.END_LIVE;
     }
 }
