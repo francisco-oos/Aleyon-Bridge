@@ -40,7 +40,9 @@ public final class ArtemisRoutineMemory {
         }
 
         JSONObject toJson(){
-            return new JSONObject().put("state",state.name()).put("action",action);
+            JSONObject o=new JSONObject();
+            try{o.put("state",state.name()).put("action",action);}catch(Exception ignored){}
+            return o;
         }
 
         static Step fromJson(JSONObject o){
@@ -87,10 +89,13 @@ public final class ArtemisRoutineMemory {
         JSONArray a=new JSONArray();
         int n=Math.min(MAX_STEPS,steps.size());
         for(int i=0;i<n;i++)a.put(steps.get(i).toJson());
-        JSONObject root=new JSONObject().put("schema",1)
-                .put("learnedAt",System.currentTimeMillis())
-                .put("steps",a);
-        prefs.edit().putString("routine:"+safe(key),root.toString()).apply();
+        JSONObject root=new JSONObject();
+        try{
+            root.put("schema",1)
+                    .put("learnedAt",System.currentTimeMillis())
+                    .put("steps",a);
+            prefs.edit().putString("routine:"+safe(key),root.toString()).apply();
+        }catch(Exception ignored){}
     }
 
     public void invalidate(String key){
