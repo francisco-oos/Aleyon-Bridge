@@ -5,7 +5,6 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $GradleVersion = "8.9"
 $CompileSdk = "35"
 $BuildTools = "35.0.0"
-$OutputName = "Aleyon-Bridge-v0.4.0-alpha1-debug.apk"
 
 function Title($t) {
   Write-Host ""
@@ -20,14 +19,35 @@ function Fail($m) {
   exit 1
 }
 
-Title "ALEYON BRIDGE v0.4 - COMPILACION APK"
+$versionFile=Join-Path $ProjectRoot "VERSION"
+if(-not(Test-Path $versionFile)){Fail "Paquete incompleto: falta VERSION en $ProjectRoot"}
+$packageVersion=(Get-Content $versionFile -Raw).Trim()
+if([string]::IsNullOrWhiteSpace($packageVersion)){Fail "VERSION esta vacio."}
+$OutputName = "AleyonBridge-v$packageVersion-debug.apk"
+
+Title "ALEYON BRIDGE $packageVersion - COMPILACION APK"
+Write-Host "PROJECT_ROOT: $ProjectRoot" -ForegroundColor Yellow
+Write-Host "PACKAGE_VERSION: $packageVersion" -ForegroundColor Yellow
+
+$required=@("app\build.gradle","app\src\main\AndroidManifest.xml","tests\verify_package.py","MANIFEST_SHA256.txt")
+foreach($rel in $required){if(-not(Test-Path (Join-Path $ProjectRoot $rel))){Fail "Paquete incompleto: falta $rel"}}
+
+$appGradleText=(Get-Content (Join-Path $ProjectRoot "app\build.gradle") -Raw)
+if($appGradleText -notmatch ('versionName\s+"'+[regex]::Escape($packageVersion)+'"')){
+  Fail "La version de app/build.gradle no coincide con VERSION ($packageVersion)."
+}
+
+Title "Preflight del paquete"
+$pythonCmd=Get-Command python.exe -ErrorAction SilentlyContinue
+if(-not $pythonCmd){$pythonCmd=Get-Command python -ErrorAction SilentlyContinue}
+if(-not $pythonCmd){Fail "No encontre Python para verificar la integridad del paquete."}
+& $pythonCmd.Source (Join-Path $ProjectRoot "tests\verify_package.py")
+if($LASTEXITCODE -ne 0){Fail "El paquete no paso la verificacion estructural; no se ejecutara Gradle."}
 
 # Java / Android Studio JBR
 $javaHomeCandidates = @()
 if ($env:JAVA_HOME) { $javaHomeCandidates += $env:JAVA_HOME }
-if ($env:ProgramFiles) {
-  $javaHomeCandidates += (Join-Path $env:ProgramFiles "Android\Android Studio\jbr")
-}
+if ($env:ProgramFiles) { $javaHomeCandidates += (Join-Path $env:ProgramFiles "Android\Android Studio\jbr") }
 $javaHome = $null
 foreach ($c in $javaHomeCandidates) {
   if ($c -and (Test-Path (Join-Path $c "bin\java.exe"))) { $javaHome = $c; break }
@@ -44,8 +64,6 @@ $env:JAVA_HOME=$javaHome
 $env:Path="$(Join-Path $javaHome 'bin');$env:Path"
 Write-Host "JAVA_HOME: $javaHome" -ForegroundColor Green
 
-# java -version writes to stderr by design; ProcessStartInfo avoids a false
-# NativeCommandError under Windows PowerShell 5.1.
 $javaExe=Join-Path $javaHome "bin\java.exe"
 $psi=New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName=$javaExe
@@ -57,11 +75,12 @@ $psi.CreateNoWindow=$true
 $proc=New-Object System.Diagnostics.Process
 $proc.StartInfo=$psi
 [void]$proc.Start()
-$stdout=$proc.StandardOutput.ReadToEnd()
-$stderr=$proc.StandardError.ReadToEnd()
-$proc.WaitForExit()
-Write-Host (($stdout+"`n"+$stderr).Trim())
+$stdout=$proc.StandardOutput.ReadToEnd(); $stderr=$proc.StandardError.ReadToEnd(); $proc.WaitForExit()
+$javaVersionText=(($stdout+"`n"+$stderr).Trim())
+Write-Host $javaVersionText
 if ($proc.ExitCode -ne 0) { Fail "Java no pudo ejecutarse." }
+if($javaVersionText -notmatch 'version\s+"(\d+)') { Fail "No pude determinar la version de Java." }
+if([int]$Matches[1] -lt 17) { Fail "Se requiere JDK 17 o superior; se detecto Java $($Matches[1])." }
 
 # SDK
 $sdkCandidates=@()
@@ -71,8 +90,7 @@ if ($env:LOCALAPPDATA) { $sdkCandidates += (Join-Path $env:LOCALAPPDATA "Android
 $sdk=$null
 foreach($c in $sdkCandidates){if($c -and (Test-Path $c)){$sdk=$c;break}}
 if(-not $sdk){Fail "No encontre Android SDK."}
-$env:ANDROID_HOME=$sdk
-$env:ANDROID_SDK_ROOT=$sdk
+$env:ANDROID_HOME=$sdk; $env:ANDROID_SDK_ROOT=$sdk
 Write-Host "ANDROID_SDK_ROOT: $sdk" -ForegroundColor Green
 
 function Find-SdkManager($sdkRoot) {
@@ -92,17 +110,17 @@ if((-not(Test-Path $platformPath))-or(-not(Test-Path $buildToolsPath))){
   if($LASTEXITCODE -ne 0){Fail "sdkmanager termino con error."}
 }
 
-# Gradle
-$cache=Join-Path $ProjectRoot ".build-cache"
+# Shared Gradle cache across clean candidates.
+if($env:LOCALAPPDATA){$cache=Join-Path $env:LOCALAPPDATA "AleyonBridge\build-cache"}
+else{$cache=Join-Path $ProjectRoot ".build-cache"}
+Write-Host "GRADLE_CACHE: $cache" -ForegroundColor Green
 $gradleHome=Join-Path $cache "gradle-$GradleVersion"
 $gradleExe=Join-Path $gradleHome "bin\gradle.bat"
 if(-not(Test-Path $gradleExe)){
   Title "Descargando Gradle $GradleVersion"
   New-Item -ItemType Directory -Force -Path $cache | Out-Null
   $zip=Join-Path $cache "gradle-$GradleVersion-bin.zip"
-  if(-not(Test-Path $zip)){
-    Invoke-WebRequest -Uri "https://services.gradle.org/distributions/gradle-$GradleVersion-bin.zip" -OutFile $zip -UseBasicParsing
-  }
+  if(-not(Test-Path $zip)){Invoke-WebRequest -Uri "https://services.gradle.org/distributions/gradle-$GradleVersion-bin.zip" -OutFile $zip -UseBasicParsing}
   Expand-Archive -Path $zip -DestinationPath $cache -Force
 }
 if(-not(Test-Path $gradleExe)){Fail "No pude preparar Gradle $GradleVersion."}
@@ -112,10 +130,9 @@ Set-Content -Path (Join-Path $ProjectRoot "local.properties") -Value "sdk.dir=$s
 
 Title "Ejecutando QA local"
 $testBat=Join-Path $ProjectRoot "tests\run_core_tests.bat"
-if(Test-Path $testBat){
-  & $testBat
-  if($LASTEXITCODE -ne 0){Fail "Los tests locales fallaron. No se compilara el APK."}
-}
+if(-not(Test-Path $testBat)){Fail "Falta tests\run_core_tests.bat"}
+& $testBat
+if($LASTEXITCODE -ne 0){Fail "Los tests locales fallaron. No se compilara el APK."}
 
 Title "Compilando APK debug"
 Push-Location $ProjectRoot
@@ -137,4 +154,4 @@ Write-Host "Tamano : $size MB"
 Write-Host "SHA256 : $($hash.Hash)"
 Write-Host ""
 Write-Host "Siguiente: instala en telefono de prueba y habilita una sola vez:"
-Write-Host "Ajustes > Accesibilidad > Aleyon Idiomas - Automatizacion Gemini"
+Write-Host "Ajustes > Accesibilidad > Aleyon Bridge - Automatizacion Gemini"

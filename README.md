@@ -1,155 +1,126 @@
-# Aleyon Bridge 0.4.0-alpha1
+# Aleyon Bridge 0.5.0-alpha2
 
-Aleyon Bridge es la capa persistente de aprendizaje que utiliza la app oficial de **Gemini** como motor cognitivo y multimodal. Aleyon conserva el perfil, el progreso, la continuidad, la evidencia y el estado transaccional; Gemini aporta Chat, Live, cámara, pantalla, imágenes y demás capacidades disponibles para la cuenta del usuario.
+Aleyon Bridge is a local learning-continuity layer over the official Gemini Android app.
 
-## Cambio arquitectónico 0.4
+## Daily experience stays simple
 
-La línea 0.3 administraba notebooks de Gemini, asociaba/separaba chats y sincronizaba memoria mediante una transacción larga. 0.4 elimina esa dependencia.
-
-```text
-PERFIL LOCAL ALEYON
-      │
-      ▼
-LearningStore + Evidence Ledger
-      │
-      ▼
-Context Capsule compacta
-      │
-      ▼
-CHAT CANÓNICO GEMINI POR PERFIL
-      │
-      ├── Chat
-      └── Live  ← ruta principal
-             │
-             └── burbuja Aleyon
-      │
-      ▼
-transcripción / conversación de la sesión
-      │
-      ▼
-reporte estructurado SESSION_ID
-      │
-      ▼
-validación de evidencia + commit local
-```
-
-### Invariantes
-
-1. **Gemini no es la fuente de verdad** del alumno.
-2. Un perfil mantiene **un chat canónico**: `ALEYON LIVE — <Idioma> — Conversación principal`.
-3. No existen notebooks, attach/detach ni reattach en el runtime 0.4.
-4. Guardar/editar perfil es local e inmediato; Gemini sólo se toca al iniciar una sesión.
-5. Live y Chat reciben la misma continuidad compacta.
-6. El chat puede conservar contexto adicional, pero Aleyon reinyecta sólo estado pedagógico de alta señal.
-7. Un `EVENT` pedagógico sólo se promueve si su evidencia textual aparece en el delta accesible de la sesión; si no puede demostrarse, se conserva el resumen pero no se inventa progreso.
-8. Imágenes, cámara o pantalla usadas con Gemini son contexto del usuario/Gemini; Bridge no necesita analizarlas ni almacenarlas.
-
-## Uso
-
-En la pantalla principal sólo aparecen acciones de usuario:
-
-- **Live** — ruta predeterminada para conversación natural.
-- **Chat** — misma continuidad, modo texto.
-- **Editar** — perfil pedagógico.
-- **Progreso** — resumen, siguiente objetivo, consejo y evidencia reciente.
-
-No se muestran proveedores, cuadernos, prompts, compactación ni operaciones internas.
-
-### Inicio de sesión
-
-Al tocar Live o Chat:
-
-1. Aleyon genera `SESSION_ID`.
-2. Localiza el chat canónico exacto del perfil; si no existe, crea uno y lo renombra una sola vez.
-3. Toma una instantánea accesible previa del chat.
-4. Construye una cápsula compacta con perfil + último resumen + próximo objetivo + evidencia reciente.
-5. La envía a Gemini y espera `ALEYON_SESSION_READY` del `SESSION_ID` actual.
-6. En Live pulsa el control Live y confirma estado activo; en Chat deja abierta la conversación.
-7. Muestra la burbuja Aleyon para volver a Gemini o cerrar sesión.
-
-### Cierre
-
-1. Si Live sigue activo, lo finaliza y espera que Gemini materialice la conversación/transcripción.
-2. Calcula un delta best-effort entre el texto accesible antes y después de la sesión.
-3. Solicita un reporte estructurado limitado al `SESSION_ID` actual.
-4. Guarda resumen, siguiente objetivo, feedback y eventos cuya evidencia sea demostrable en el delta.
-5. Marca `READY` y vuelve a Aleyon.
-
-El chat canónico **se conserva por defecto**. No se borra después de cada sesión: esto reduce automatización, permite reanudar Live en la misma conversación y conserva contexto útil de Gemini sin convertirlo en memoria autoritativa.
-
-## Compactación
-
-`ContextCapsuleBuilder` implementa compactación de continuidad del lado de Aleyon:
-
-- perfil estable siempre presente;
-- resumen de última sesión;
-- próximo objetivo;
-- máximo 8 evidencias recientes;
-- límites de longitud por campo;
-- ningún historial completo se reenvía.
-
-El principio se inspira en estrategias modernas de context engineering/compaction: conservar estado exacto fuera del modelo y reemplazar historia de bajo valor por una continuación estructurada de alta señal.
-
-## Android / Accessibility
-
-Se conserva el fix probado de alpha4 para Android 16/OEM:
-
-- `getRootInActiveWindow()` primero;
-- fallback por `getWindows()`;
-- sólo raíces de `com.google.android.apps.bard`;
-- prioridad ventana Gemini activa → enfocada → única `TYPE_APPLICATION`;
-- `TYPE_WINDOWS_CHANGED` sólo despierta la máquina de estados;
-- no se usan coordenadas ni gesture injection;
-- burbuja mediante `TYPE_ACCESSIBILITY_OVERLAY`.
-
-Bridge no pide `RECORD_AUDIO`: Gemini Live controla micrófono/voz.
-
-## Estado QA de esta revisión
-
-Ejecutado en este entorno:
+The normal user still does only this:
 
 ```text
-PASS core tests: 8
-PASS static QA
-PASS full Java stub compile: 21 production files
+open Bridge
+  ↓
+choose language/profile
+  ↓
+Chat  or  Iniciar Live
+  ↓
+Gemini opens with the relevant profile, progress and next objective
 ```
 
-La compilación APK real y los selectores de la versión de Gemini instalada requieren Android SDK/teléfono físico. Ver `docs/PHYSICAL_QA_PLAN.md`.
+The adaptive transport stays invisible unless Gemini needs a human decision or an unknown UI variant is detected.
 
-## Estructura relevante
+## Responsibility split
 
 ```text
-app/src/main/java/com/aleyon/geminibridge/
-├── MainActivity.java
-├── automation/
-│   ├── AleyonAccessibilityService.java
-│   ├── GeminiUi.java
-│   ├── LearningStore.java
-│   ├── OverlayController.java
-│   ├── ProfileSpec.java
-│   ├── PromptRepository.java
-│   └── SessionJournal.java
-└── core/
-    ├── ContextCapsuleBuilder.java
-    ├── LearningEvent.java
-    ├── LearningLedger.java
-    ├── ProtocolContract.java
-    ├── RecoveryPlanner.java
-    ├── SessionReportParser.java
-    ├── SessionStage.java
-    └── SessionTextDelta.java
+Aleyon Bridge      → stores profile, progress, evidence and reconstruction state
+Adaptive transport → carries, brings back and adapts; observes/verifies/recoveries Gemini UI
+Android / Gemini   → transports selected file bytes and provides reasoning, Chat, Live and multimodality
 ```
 
-## Documentación
+**Artemis carries, brings back and adapts. Gemini thinks. Bridge remembers.**
 
-- `docs/ARCHITECTURE.md`
-- `docs/ADR-0001_LOCAL_MEMORY_CANONICAL_CHAT.md`
-- `docs/CONTEXT_COMPACTION.md`
-- `docs/GEMINI_AUTOMATION_CONTRACT.md`
-- `docs/MIGRATION_ALPHA4_TO_0.4.md`
-- `docs/PHYSICAL_QA_PLAN.md`
-- `docs/QA_REPORT_0.4.0-alpha1.md`
-- `docs/RESEARCH_2026-09-17.md`
-- `docs/SECURITY.md`
+Artemis-derived transport does not need microphone access and does not read study-file bytes. Gemini owns Live audio/camera/screen. For documents/images/audio/video, Android's native picker and Gemini own the byte handoff; Bridge carries the session intent/context and verifies the surrounding flow.
 
-La versión 0.3.0-alpha4 se usa como referencia histórica de la burbuja, perfiles, arranque Live y resolución Android 16, no como arquitectura de memoria vigente.
+## Canonical Gemini conversation
+
+Each language/profile uses one deterministic Gemini conversation:
+
+`ALEYON — <idioma>`
+
+That conversation is a useful **cognitive cache**, not authoritative memory. Bridge still sends a bounded local continuity update every session. If the Gemini conversation disappears, Bridge reconstructs it from the local `LearningLedger` and continues under the same canonical title.
+
+## Adaptive start flow
+
+```text
+observe current Gemini state
+  ↓
+normalize (Gemini already open / another chat / Live already active)
+  ↓
+resolve the canonical conversation
+  ├─ found → reuse
+  └─ missing → create + reconstruct + rename
+  ↓
+deliver bounded local context
+  ↓
+verify Chat or enter/verify Live
+```
+
+No device-brand branches, absolute screen coordinates or accessibility gesture injection are allowed in production.
+
+## Study materials
+
+0.5.0-alpha2 introduces the safe material-handoff contract:
+
+```text
+Bridge profile + learning goal
+        ↓
+Adaptive transport opens/verifies the correct Gemini chat
+        ↓
+Gemini native attachment surface
+        ↓
+User/Android selects the document, image, audio or video
+        ↓
+Gemini reads/analyzes the actual bytes
+        ↓
+Bridge stores only learning results/evidence needed for continuity
+```
+
+`SessionMaterial` stores metadata only. `MaterialHandoffPolicy` accepts user-selected `content://` references, rejects filesystem `file://` paths and applies conservative item/size guards. The current alpha does **not** automate the Android document picker; that is deliberate to avoid broad filesystem/system-UI authority.
+
+## Compatibility immune memory
+
+`CompatibilityMemory` is separate from `LearningLedger`. Known Gemini routes remain cheap; unknown UI states fail closed with evidence rather than guessing. Host-side Artemis can then explore a new variant and help promote the smallest verified semantic rule.
+
+## Session close and profile enrichment
+
+Every verified close now persists:
+
+- a bounded session summary;
+- next objective;
+- session transcript delta;
+- observed progress evidence;
+- explicit reinforcement evidence;
+- recent session history.
+
+Deleting a provider conversation does not delete these facts.
+
+## Security invariants
+
+- no microphone, camera, Internet or storage permission in Bridge;
+- no `MANAGE_EXTERNAL_STORAGE`, broad overlay or package-install permission;
+- Android backup disabled for local learner memory;
+- Accessibility limited to Gemini packages;
+- `canPerformGestures=false`;
+- no arbitrary shell / unrestricted ADB / package control in the APK;
+- WebView is local-only, debugging disabled, external navigation blocked;
+- human consent remains human-owned;
+- unknown provider UI fails closed.
+
+Artemis is not embedded wholesale. Known open Artemis command-injection surfaces involving arbitrary shell/package/notification hooks are explicitly outside the production Bridge capability set.
+
+## Development source of truth
+
+`develop/artemis-transport`
+
+`develop/bridge-clean` remains the historical 0.4 baseline.
+
+## QA
+
+Run the same suite on Linux/macOS or Windows:
+
+```bash
+bash tests/run_core_tests.sh
+```
+
+The suite includes package/version parity, Java core tests, a 60-profile/360-session contract matrix, static architecture QA, WebView/native interaction QA, security QA, Windows/Linux build-runner parity and full Java stub compilation.
+
+Physical Gemini behavior is still a separate promotion gate. See `docs/NUBIA_QA_PLAN.md`.

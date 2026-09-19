@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Parses only the report block tagged with the current session/profile/schema. */
+/**
+ * Parses only user-facing session debrief text. Machine protocol is intentionally
+ * not rendered into the visible Gemini conversation.
+ */
 public final class SessionReportParser {
     public static final class Report {
         public String summary="", nextObjective="", feedback="";
@@ -14,41 +17,43 @@ public final class SessionReportParser {
     private SessionReportParser() {}
 
     public static boolean hasSessionReady(String text,String sessionId,String profileId){
-        return tagged(text, ProtocolContract.SESSION_READY, sessionId, profileId);
+        if(text==null) return false;
+        String q="(?m)^"+Pattern.quote(ProtocolContract.SESSION_READY)
+                +"\\s+SESSION_ID="+Pattern.quote(sessionId)
+                +"\\s+PROFILE_ID="+Pattern.quote(profileId)
+                +"\\s+SCHEMA_VERSION="+ProtocolContract.SCHEMA_VERSION+"\\s*$";
+        return Pattern.compile(q).matcher(text).find();
     }
 
-    public static Report parse(String text,String sessionId,String profileId){ return parse(text,sessionId,profileId,null); }
-
-    public static Report parse(String text,String sessionId,String profileId,String evidenceText){
-        String block=reportBlock(text,sessionId,profileId);
-        if(block==null) return null;
+    /**
+     * Expected visible response:
+     * Resumen: ...
+     * Avance: ...
+     * A reforzar: ...
+     * Próximo paso: ...
+     */
+    public static Report parseDebrief(String text){
+        if(text==null||text.trim().isEmpty()) return null;
+        String summary=value(text,"Resumen");
+        String progress=value(text,"Avance");
+        String reinforce=value(text,"A\\s+reforzar");
+        String next=value(text,"Pr[oó]ximo\\s+paso");
+        if(summary.isEmpty()||progress.isEmpty()||reinforce.isEmpty()||next.isEmpty()) return null;
         Report r=new Report();
-        for(String raw:block.split("\\r?\\n")){
-            String line=raw.trim();
-            if(line.startsWith("SUMMARY|")) r.summary=line.substring(8).trim();
-            else if(line.startsWith("NEXT|")) r.nextObjective=line.substring(5).trim();
-            else if(line.startsWith("FEEDBACK|")) r.feedback=line.substring(9).trim();
-            else if(line.startsWith("EVENT|")){
-                String[] p=line.split("\\|",5);
-                if(p.length==5 && !p[4].trim().isEmpty()) {
-                    String evidence=p[4].trim();
-                    if(evidenceText==null || evidenceText.contains(evidence)) r.events.add(new LearningEvent(p[1],p[2],p[3],evidence,System.currentTimeMillis()));
-                }
-            }
-        }
+        r.summary=summary;
+        r.feedback="Avance: "+progress+"\nA reforzar: "+reinforce;
+        r.nextObjective=next;
+        long now=System.currentTimeMillis();
+        r.events.add(new LearningEvent("session-progress","progreso-observado","observed",progress,now));
+        r.events.add(new LearningEvent("session-reinforcement","a-reforzar","needs-practice",reinforce,now));
         return r;
     }
 
-    private static boolean tagged(String text,String marker,String sid,String pid){
-        if(text==null) return false;
-        String q="(?m)^"+Pattern.quote(marker)+"\\s+SESSION_ID="+Pattern.quote(sid)+"\\s+PROFILE_ID="+Pattern.quote(pid)+"\\s+SCHEMA_VERSION="+ProtocolContract.SCHEMA_VERSION+"\\s*$";
-        return Pattern.compile(q).matcher(text).find();
-    }
-    private static String reportBlock(String text,String sid,String pid){
-        if(text==null) return null;
-        String head=ProtocolContract.REPORT_BEGIN+" SESSION_ID="+sid+" PROFILE_ID="+pid+" SCHEMA_VERSION="+ProtocolContract.SCHEMA_VERSION;
-        String tail=ProtocolContract.REPORT_END+" SESSION_ID="+sid+" PROFILE_ID="+pid;
-        int a=text.lastIndexOf(head); if(a<0)return null; int b=text.indexOf(tail,a+head.length()); if(b<0)return null;
-        return text.substring(a+head.length(),b);
+    private static String value(String text,String labelRegex){
+        Pattern p=Pattern.compile("(?im)^\\s*"+labelRegex+"\\s*:\\s*(.+?)\\s*$");
+        Matcher m=p.matcher(text);
+        String last="";
+        while(m.find()) last=m.group(1).trim();
+        return last;
     }
 }

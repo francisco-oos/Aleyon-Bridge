@@ -26,22 +26,33 @@ public final class LearningStore {
         return l;
     }
 
-    public void commit(String profileId, SessionReportParser.Report report, String sessionId){
-        if(report==null)return;
+    /**
+     * Synchronous commit plus read-back verification. Session cleanup is never
+     * allowed to outrun this point; a failed write leaves the transaction in ERROR.
+     */
+    public boolean commitVerified(String profileId, SessionReportParser.Report report, String sessionId){ return commitVerified(profileId,report,sessionId,""); }
+
+    public boolean commitVerified(String profileId, SessionReportParser.Report report, String sessionId, String sessionText){
+        if(report==null||profileId==null||profileId.trim().isEmpty()||sessionId==null||sessionId.trim().isEmpty())return false;
         LearningLedger l=load(profileId);
         if(!report.summary.isEmpty())l.setLastSessionSummary(clip(report.summary,4000));
         if(!report.nextObjective.isEmpty())l.setNextObjective(clip(report.nextObjective,1200));
         for(LearningEvent e:report.events)l.addVerified(new LearningEvent(clip(e.category,120),clip(e.skill,160),clip(e.status,80),clip(e.evidence,600),e.observedAtMs));
-        JSONArray a=new JSONArray();
         try{
+            JSONArray a=new JSONArray();
             java.util.List<LearningEvent> snapshot=l.snapshot(); int start=Math.max(0,snapshot.size()-500);
             for(int i=start;i<snapshot.size();i++){LearningEvent e=snapshot.get(i);
-                JSONObject o=new JSONObject().put("category",e.category).put("skill",e.skill).put("status",e.status).put("evidence",e.evidence).put("ts",e.observedAtMs); a.put(o);
+                a.put(new JSONObject().put("category",e.category).put("skill",e.skill).put("status",e.status).put("evidence",e.evidence).put("ts",e.observedAtMs));
             }
             JSONObject r=new JSONObject().put("summary",l.getLastSessionSummary()).put("next",l.getNextObjective()).put("events",a)
-                    .put("lastSessionId",sessionId).put("lastFeedback",clip(report.feedback,3000)).put("updatedAt",System.currentTimeMillis());
-            prefs.edit().putString("ledger:"+profileId,r.toString()).apply();
-        }catch(Exception ignored){}
+                    .put("lastSessionId",sessionId).put("lastFeedback",clip(report.feedback,3000))
+                    .put("lastSessionText",clip(sessionText,12000)).put("updatedAt",System.currentTimeMillis());
+            if(!prefs.edit().putString("ledger:"+profileId,r.toString()).commit())return false;
+            String written=prefs.getString("ledger:"+profileId,"");
+            if(written==null||written.isEmpty())return false;
+            JSONObject check=new JSONObject(written);
+            return sessionId.equals(check.optString("lastSessionId",""));
+        }catch(Exception e){return false;}
     }
 
     public String exportProfileMemory(String profileId){ return prefs.getString("ledger:"+profileId,"{}"); }

@@ -12,10 +12,12 @@ if not exist "%ADB%" (
   exit /b 1
 )
 
+set "VER="
+if exist "VERSION" set /p VER=<VERSION
 set "APK="
-if exist "Aleyon-Bridge-v0.4.0-alpha1-debug.apk" set "APK=%CD%\Aleyon-Bridge-v0.4.0-alpha1-debug.apk"
+if defined VER if exist "AleyonBridge-v%VER%-debug.apk" set "APK=%CD%\AleyonBridge-v%VER%-debug.apk"
 if not defined APK (
-  for /f "delims=" %%F in ('dir /b /a-d /o-d "Aleyon-Bridge-v*-debug.apk" 2^>nul') do (
+  for /f "delims=" %%F in ('dir /b /a-d /o-d "AleyonBridge-v*-debug.apk" 2^>nul') do (
     set "APK=%CD%\%%F"
     goto :found
   )

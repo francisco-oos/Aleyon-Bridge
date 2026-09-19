@@ -15,6 +15,16 @@ import com.aleyon.geminibridge.core.RecoveryPlanner;
 import com.aleyon.geminibridge.core.SessionReportParser;
 import com.aleyon.geminibridge.core.SessionStage;
 import com.aleyon.geminibridge.core.SessionTextDelta;
+import com.aleyon.geminibridge.core.TransportState;
+import com.aleyon.geminibridge.transport.CompatibilityMemory;
+import com.aleyon.geminibridge.transport.ConversationRegistry;
+import com.aleyon.geminibridge.transport.GeminiConversationTransport;
+import com.aleyon.geminibridge.transport.GeminiStateObserver;
+import com.aleyon.geminibridge.transport.SessionIntent;
+import com.aleyon.geminibridge.transport.TransportObservation;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.util.ArrayDeque;
 import java.util.List;
@@ -22,229 +32,600 @@ import java.util.Queue;
 import java.util.UUID;
 
 /**
- * Bridge 0.4 orchestrator.
+ * Aleyon Bridge runtime on the field-tested alpha11 Android/Gemini layer.
  *
- * Gemini owns cognition/Live/multimodal interaction for the active session.
- * Aleyon owns profile, continuity, evidence ledger and crash recovery.
- * There are no Notebook, attach/detach or reattach transactions in this runtime.
+ * Aleyon owns profile, continuity and learning evidence. Gemini remains the
+ * native cognitive/Live/multimodal surface. Each session opens a normal
+ * canonical Gemini conversation, injects bounded Aleyon context, runs Chat/Live,
+ * then commits learning back to Aleyon. Provider history is useful but never
+ * required for continuity because local memory remains authoritative.
  */
-public final class AleyonAccessibilityService extends AccessibilityService implements OverlayController.Listener {
-    public static final String GEMINI_PACKAGE="com.google.android.apps.bard";
-    private static final long STEP_DELAY_MS=650, RESPONSE_DELAY_MS=1100, TRANSCRIPT_SETTLE_MS=2500;
-    private static final int MAX_UI_RETRIES=18, MAX_RESPONSE_RETRIES=55;
-    private static AleyonAccessibilityService instance;
+public final class AleyonAccessibilityService extends AccessibilityService
+        implements OverlayController.Listener {
 
+    public static final String GEMINI_PACKAGE=GeminiUi.GEMINI_APP_PACKAGE;
+    public static final String GEMINI_HOST_PACKAGE=GeminiUi.GEMINI_GOOGLE_HOST_PACKAGE;
+    private static final long GOOGLE_HOST_VERIFICATION_LEASE_MS=8_000L;
+    private static final long STEP_DELAY_MS=650L;
+    private static final long RESPONSE_DELAY_MS=1100L;
+    private static final long TRANSCRIPT_SETTLE_MS=1200L;
+    private static final int MAX_UI_RETRIES=32;
+    private static final int MAX_RESPONSE_RETRIES=80;
+
+    private static AleyonAccessibilityService instance;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private SessionJournal journal;
     private LearningStore learning;
     private PromptRepository prompts;
     private OverlayController overlay;
     private DiagnosticsRecorder diagnostics;
+    private ConversationRegistry conversations;
+    private CompatibilityMemory compatibility;
+    private GeminiConversationTransport transport;
     private Runner runner;
+    private boolean passiveProbeInProgress;
 
-    // Android 16/OEM root-resolution evidence retained from alpha4.
-    private String lastRootSource="none", lastWindowsSummary="";
+    private String lastRootSource="none",lastWindowsSummary="";
     private int lastInteractiveWindowCount;
+    private long googleHostVerifiedUntilMs;
 
     public static AleyonAccessibilityService instance(){return instance;}
+
     public static boolean submit(android.content.Context context,AutomationRequest request){
-        try{AutomationCommandBus.enqueue(context,request);AleyonAccessibilityService s=instance;if(s!=null)s.kick();return s!=null;}catch(Exception e){return false;}
+        try{
+            AutomationCommandBus.enqueue(context,request);
+            AleyonAccessibilityService s=instance;
+            if(s!=null)s.kick();
+            // Durable queue acceptance is success even if Android is rebinding the service.
+            return true;
+        }catch(Exception e){return false;}
     }
 
-    @Override protected void onServiceConnected(){super.onServiceConnected();instance=this;journal=new SessionJournal(this);learning=new LearningStore(this);prompts=new PromptRepository(this);overlay=new OverlayController(this,this);diagnostics=new DiagnosticsRecorder(this);kick();}
+    @Override protected void onServiceConnected(){
+        super.onServiceConnected();instance=this;
+        journal=new SessionJournal(this);learning=new LearningStore(this);
+        prompts=new PromptRepository(this);overlay=new OverlayController(this,this);
+        diagnostics=new DiagnosticsRecorder(this);conversations=new ConversationRegistry(this);
+        compatibility=new CompatibilityMemory(this);transport=new GeminiConversationTransport();kick();
+    }
+
     @Override public void onAccessibilityEvent(AccessibilityEvent event){
         if(event==null)return;
-        if(event.getEventType()==AccessibilityEvent.TYPE_WINDOWS_CHANGED){if(runner!=null)runner.schedule(120);return;}
-        if(event.getPackageName()!=null&&GEMINI_PACKAGE.contentEquals(event.getPackageName())&&runner!=null)runner.schedule(180);
+        if(event.getEventType()==AccessibilityEvent.TYPE_WINDOWS_CHANGED){
+            Runner r=runner;if(r!=null)r.schedule(120);return;
+        }
+        if(event.getPackageName()==null||!GeminiUi.isGeminiPackage(event.getPackageName()))return;
+        Runner r=runner;if(r!=null)r.schedule(180);
     }
+
     @Override public void onInterrupt(){}
     @Override public void onDestroy(){if(overlay!=null)overlay.hide();if(instance==this)instance=null;super.onDestroy();}
     @Override public void onReturnToGemini(){launchGemini();}
+
     @Override public void onCloseRequested(){
-        if(runner!=null&&!runner.finished){runner.beginClose();return;}
+        Runner r=runner;
+        if(r!=null&&!r.finished){r.beginClose();return;}
+        ProfileSpec p=activeOverlayProfile();
+        if(p!=null)startRunner(Mode.CLOSE,p,journal.activeSessionMode(p.id));
+    }
+
+    @Override public void onRecoverRequested(){
+        ProfileSpec p=activeOverlayProfile();if(p!=null)startRecovery(p);
+    }
+
+    @Override public OverlayController.Status currentStatus(){
+        ProfileSpec p=activeOverlayProfile();
+        if(p==null)return new OverlayController.Status("","",false);
+        SessionStage s=journal.stage(p.id);
+        boolean pending=s==SessionStage.AMBIGUOUS_USER_REQUIRED||s==SessionStage.USER_ACTION_REQUIRED
+                ||s==SessionStage.APP_UPDATE_REQUIRED||s==SessionStage.ERROR;
+        return new OverlayController.Status(humanStage(s),journal.lastError(p.id),pending);
+    }
+
+    private static String humanStage(SessionStage s){
+        if(s==null)return "Listo";
+        return switch(s){
+            case READY -> "Listo";
+            case OPENING_SESSION_CHAT, CONTEXT_INJECTING, CONTEXT_READY -> "Preparando";
+            case LIVE_STARTING -> "Abriendo Live";
+            case LIVE_ACTIVE -> "En Live";
+            case CHAT_ACTIVE -> "En chat";
+            case CLOSING_SESSION -> "Cerrando";
+            case WAITING_TRANSCRIPT, COMMITTING -> "Guardando";
+            case ANALYZING -> "Resumiendo";
+            case RECOVERING -> "Recuperando";
+            case ERROR, AMBIGUOUS_USER_REQUIRED, USER_ACTION_REQUIRED -> "Requiere atención";
+            case APP_UPDATE_REQUIRED -> "Compatibilidad";
+        };
+    }
+
+    private ProfileSpec activeOverlayProfile(){
         String id=getSharedPreferences("aleyon_runtime",MODE_PRIVATE).getString("active_profile_id",null);
-        if(id!=null){ProfileSpec p=journal.loadProfile(id);if(p!=null)startRunner(Mode.CLOSE,p,journal.activeSessionMode(id));}
+        return id==null?null:journal.loadProfile(id);
     }
 
     public void kick(){
         handler.post(()->{
+            if(passiveProbeInProgress)return;
             if(runner!=null&&!runner.finished)return;
             AutomationRequest req=AutomationCommandBus.consume(this);if(req==null)return;
             try{
+                if(req.type==AutomationRequest.Type.DIAGNOSTIC_PROBE){startPassiveProbe(req.profileJson);return;}
                 ProfileSpec p=ProfileSpec.fromJson(req.profileJson);journal.saveProfile(p);
                 switch(req.type){
-                    case START_LIVE_SESSION -> startOrRecover(p,"LIVE");
-                    case START_CHAT_SESSION -> startOrRecover(p,"CHAT");
-                    case CLOSE_SESSION -> startRunner(Mode.CLOSE,p,journal.activeSessionMode(p.id));
-                    case RECOVER -> recover(p);
+                    case START_LIVE_SESSION -> startFreshSession(p,"LIVE");
+                    case START_CHAT_SESSION -> startFreshSession(p,"CHAT");
+                    case CLOSE_SESSION -> closeOrCancel(p);
+                    case RECOVER -> startRecovery(p);
+                    default -> {}
                 }
             }catch(Exception ignored){}
         });
     }
 
-    private void startOrRecover(ProfileSpec p,String sessionMode){
-        SessionStage s=journal.stage(p.id);
-        if(s==SessionStage.READY||s==SessionStage.ERROR)startRunner("CHAT".equals(sessionMode)?Mode.START_CHAT:Mode.START_LIVE,p,sessionMode);
-        else recover(p);
+    private void startPassiveProbe(String requestedProbeId){
+        passiveProbeInProgress=true;
+        final JSONArray samples=new JSONArray();
+        final String probeId=requestedProbeId==null?"":requestedProbeId.trim();
+        getSharedPreferences("aleyon_probe",MODE_PRIVATE).edit().putString("last_probe","{}")
+                .putLong("last_probe_ts",0L).putString("last_probe_id","").apply();
+        launchGemini();
+        long[] delays={900L,2200L,3600L};
+        for(int i=0;i<delays.length;i++){
+            final int n=i;handler.postDelayed(()->{try{samples.put(PassiveGeminiProbe.capture(this,n));}catch(Exception ignored){}},delays[i]);
+        }
+        handler.postDelayed(()->{
+            JSONObject report=new JSONObject();
+            try{report.put("schema","aleyon-gemini-passive-probe-v9").put("version","0.5.0-alpha2")
+                    .put("probeId",probeId).put("readOnly",true).put("sampleCount",samples.length()).put("samples",samples);}catch(Exception ignored){}
+            getSharedPreferences("aleyon_probe",MODE_PRIVATE).edit().putString("last_probe",report.toString())
+                    .putLong("last_probe_ts",System.currentTimeMillis()).putString("last_probe_id",probeId).apply();
+            passiveProbeInProgress=false;launchAleyon();handler.postDelayed(this::kick,250L);
+        },4300L);
     }
 
-    private void recover(ProfileSpec p){
-        SessionStage previous=journal.stage(p.id);journal.stage(p.id,SessionStage.RECOVERING);launchGemini();
+    /** Explicit START always creates a fresh local session transaction; provider chat may be reused. */
+    private void startFreshSession(ProfileSpec p,String mode){
+        SessionStage s=journal.stage(p.id);
+        AccessibilityNodeInfo current=resolveGeminiRoot();
+        if(s==SessionStage.LIVE_ACTIVE && "LIVE".equals(journal.activeSessionMode(p.id))
+                && transport.isLiveActive(current)){
+            rememberActive(p);showOverlay(p);startWaitRunner(p,"LIVE");return;
+        }
+        abandonUnfinishedRuntime(p);
+        startRunner("CHAT".equals(mode)?Mode.START_CHAT:Mode.START_LIVE,p,mode);
+    }
+
+    private void closeOrCancel(ProfileSpec p){
+        SessionStage s=journal.stage(p.id);
+        if(isCloseableStage(s)) startRunner(Mode.CLOSE,p,journal.activeSessionMode(p.id));
+        else finishReadyOutsideRunner(p);
+    }
+
+    private boolean isCloseableStage(SessionStage s){
+        return s==SessionStage.LIVE_ACTIVE||s==SessionStage.CHAT_ACTIVE
+                ||s==SessionStage.CLOSING_SESSION||s==SessionStage.WAITING_TRANSCRIPT
+                ||s==SessionStage.ANALYZING||s==SessionStage.COMMITTING;
+    }
+
+    private void abandonUnfinishedRuntime(ProfileSpec p){
+        Runner r=runner;if(r!=null&&!r.finished)r.abortWithoutCommit();
+        journal.clearError(p.id);journal.clearRecoverableStage(p.id);journal.clearActiveSession(p.id);
+        journal.stage(p.id,SessionStage.READY);clearActive(p);if(overlay!=null)overlay.hide();
+    }
+
+    private void startRecovery(ProfileSpec p){
+        SessionStage previous=journal.stage(p.id);
+        journal.stage(p.id,SessionStage.RECOVERING);launchGemini();
         handler.postDelayed(()->{
-            boolean live=GeminiUi.isLiveScreen(resolveGeminiRoot());
-            RecoveryPlanner.RecoveryAction action=RecoveryPlanner.plan(previous,live);
+            boolean live=transport.isLiveActive(resolveGeminiRoot());
+            RecoveryPlanner.RecoveryAction action=RecoveryPlanner.reconcile(previous,journal.recoverableStage(p.id),live);
             switch(action){
                 case NONE -> finishReadyOutsideRunner(p);
                 case RETRY_START -> startRunner("CHAT".equals(journal.activeSessionMode(p.id))?Mode.START_CHAT:Mode.START_LIVE,p,journal.activeSessionMode(p.id));
-                case RESTORE_LIVE_OVERLAY -> {journal.stage(p.id,SessionStage.LIVE_ACTIVE);rememberActive(p);showOverlay(p);startRunner(Mode.WAIT,p,"LIVE");}
-                case RESTORE_CHAT_OVERLAY -> {journal.stage(p.id,SessionStage.CHAT_ACTIVE);rememberActive(p);showOverlay(p);startRunner(Mode.WAIT,p,"CHAT");}
-                case FINISH_CLOSE -> startRunner(Mode.CLOSE,p,journal.activeSessionMode(p.id));
-                case ASK_USER -> failWithoutRunner(p,"Se detectó una ambigüedad que requiere revisión humana.",SessionStage.AMBIGUOUS_USER_REQUIRED);
-                case REQUIRE_BRIDGE_UPDATE -> failWithoutRunner(p,"Gemini cambió de interfaz. Aleyon Bridge necesita actualizar selectores.",SessionStage.APP_UPDATE_REQUIRED);
+                case RESTORE_LIVE_OVERLAY -> {journal.stage(p.id,SessionStage.LIVE_ACTIVE);rememberActive(p);showOverlay(p);startWaitRunner(p,"LIVE");}
+                case RESTORE_CHAT_OVERLAY -> {journal.stage(p.id,SessionStage.CHAT_ACTIVE);rememberActive(p);showOverlay(p);startWaitRunner(p,"CHAT");}
+                case FINISH_CLOSE -> {
+                    if(journal.activeSessionId(p.id).isEmpty())failWithoutRunner(p,"No existe SESSION_ID recuperable para cerrar con evidencia.",SessionStage.USER_ACTION_REQUIRED);
+                    else startRunner(Mode.CLOSE,p,journal.activeSessionMode(p.id));
+                }
+                case ASK_USER -> failWithoutRunner(p,"La última ejecución quedó en un estado ambiguo. Abre Gemini o usa Diagnóstico y vuelve a Recuperar.",SessionStage.AMBIGUOUS_USER_REQUIRED);
+                case REQUIRE_BRIDGE_UPDATE -> failWithoutRunner(p,"Gemini cambió de interfaz y esta variante requiere una nueva regla de compatibilidad verificada.",SessionStage.APP_UPDATE_REQUIRED);
             }
-        },900);
+        },900L);
     }
 
-    private void startRunner(Mode mode,ProfileSpec p,String sessionMode){runner=new Runner(mode,p,sessionMode);runner.schedule(0);}
-    private void failWithoutRunner(ProfileSpec p,String msg,SessionStage stage){journal.error(p.id,msg,stage);launchAleyon();}
-    private void finishReadyOutsideRunner(ProfileSpec p){journal.stage(p.id,SessionStage.READY);journal.clearActiveSession(p.id);clearActive(p);if(overlay!=null)overlay.hide();launchAleyon();}
-    private void launchGemini(){Intent i=getPackageManager().getLaunchIntentForPackage(GEMINI_PACKAGE);if(i!=null){i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);startActivity(i);}}
+    private void startRunner(Mode mode,ProfileSpec p,String sessionMode){
+        googleHostVerifiedUntilMs=0L;rememberActive(p);
+        if(overlay!=null)overlay.showWorking(p.label,phaseLabel(mode));
+        runner=new Runner(mode,p,sessionMode);runner.schedule(0);
+    }
+    private void startWaitRunner(ProfileSpec p,String sessionMode){runner=new Runner(Mode.WAIT,p,sessionMode);runner.schedule(0);}
+
+    private static String phaseLabel(Mode mode){
+        return switch(mode){
+            case START_LIVE -> "Preparando Live…";
+            case START_CHAT -> "Preparando chat…";
+            case WAIT -> "Sesión activa";
+            case CLOSE -> "Guardando sesión…";
+        };
+    }
+
+    private void failWithoutRunner(ProfileSpec p,String msg,SessionStage terminal){
+        if(p!=null){SessionStage old=journal.stage(p.id);journal.recoverableStage(p.id,old);journal.appendErrorHistory(p.id,msg,terminal);journal.error(p.id,msg,terminal);rememberActive(p);if(overlay!=null){overlay.show(p.label,"","");overlay.markNeedsAttention();}}
+        launchAleyon();
+    }
+
+    private void finishReadyOutsideRunner(ProfileSpec p){
+        journal.clearError(p.id);journal.clearRecoverableStage(p.id);journal.stage(p.id,SessionStage.READY);
+        journal.clearActiveSession(p.id);clearActive(p);if(overlay!=null)overlay.hide();launchAleyon();
+    }
+
+    private void launchGemini(){
+        Intent i=getPackageManager().getLaunchIntentForPackage(GEMINI_PACKAGE);
+        if(i!=null){i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);startActivity(i);}
+    }
     private void launchAleyon(){Intent i=new Intent(this,MainActivity.class);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);startActivity(i);}
 
-    /** Alpha4 Android-16-safe root resolver; only Gemini-owned roots are ever returned. */
+    /** alpha11 field-tested root resolver: focused Gemini modal outranks stale active root. */
     private AccessibilityNodeInfo resolveGeminiRoot(){
         lastRootSource="none";lastWindowsSummary="";lastInteractiveWindowCount=0;
         try{
-            AccessibilityNodeInfo active=getRootInActiveWindow();
-            if(GeminiUi.isGeminiRoot(active)){lastRootSource="active-root";lastWindowsSummary="activeRoot=gemini";return active;}
+            AccessibilityNodeInfo active=getRootInActiveWindow();boolean activeTrusted=isTrustedGeminiCandidate(active);
             List<AccessibilityWindowInfo> windows=getWindows();
-            if(windows==null||windows.isEmpty()){lastWindowsSummary=active==null?"activeRoot=null; windows=0":"activeRootPackage="+packageName(active)+"; windows=0";return null;}
+            if(windows==null||windows.isEmpty()){
+                lastWindowsSummary=active==null?"activeRoot=null; windows=0":"activeRootPackage="+packageName(active)+",verified="+activeTrusted+"; windows=0";
+                if(activeTrusted){lastRootSource=sourceFor(active,"active-root-no-windows");return active;}return null;
+            }
             lastInteractiveWindowCount=windows.size();StringBuilder summary=new StringBuilder();int applicationWindows=0;
-            AccessibilityNodeInfo soleGeminiApplicationRoot=null,focusedGeminiRoot=null,activeGeminiRoot=null;
+            AccessibilityNodeInfo sole=null,focused=null,activeWindow=null;
             for(int i=0;i<windows.size();i++){
-                AccessibilityWindowInfo w=windows.get(i);if(w==null)continue;AccessibilityNodeInfo candidate=null;try{candidate=w.getRoot();}catch(Exception ignored){}
-                String pkg=packageName(candidate);boolean application=w.getType()==AccessibilityWindowInfo.TYPE_APPLICATION;if(application)applicationWindows++;
-                if(summary.length()>0)summary.append(" | ");summary.append('#').append(i).append(":type=").append(w.getType()).append(",active=").append(w.isActive()).append(",focused=").append(w.isFocused()).append(",pkg=").append(pkg.isEmpty()?"?":pkg);
-                if(!GeminiUi.isGeminiRoot(candidate))continue;if(application)soleGeminiApplicationRoot=candidate;if(w.isActive())activeGeminiRoot=candidate;if(w.isFocused())focusedGeminiRoot=candidate;
+                AccessibilityWindowInfo w=windows.get(i);if(w==null)continue;AccessibilityNodeInfo candidate=null;
+                try{candidate=w.getRoot();}catch(Exception ignored){}
+                boolean application=w.getType()==AccessibilityWindowInfo.TYPE_APPLICATION;if(application)applicationWindows++;
+                boolean trusted=isTrustedGeminiCandidate(candidate);boolean blocker=trusted&&GeminiUi.isBlockingConsentDialog(candidate);
+                boolean robin=trusted&&GeminiUi.hasRobinResourceSignature(candidate);
+                if(summary.length()>0)summary.append(" | ");
+                summary.append('#').append(i).append(":type=").append(w.getType()).append(",active=").append(w.isActive())
+                        .append(",focused=").append(w.isFocused()).append(",pkg=").append(packageName(candidate))
+                        .append(",geminiVerified=").append(trusted).append(",robin=").append(robin).append(",consentBlocker=").append(blocker);
+                if(!trusted||!application)continue;sole=candidate;if(w.isFocused())focused=candidate;if(w.isActive())activeWindow=candidate;
             }
             lastWindowsSummary=summary.toString();
-            if(activeGeminiRoot!=null){lastRootSource="interactive-window-active";return activeGeminiRoot;}
-            if(focusedGeminiRoot!=null){lastRootSource="interactive-window-focused";return focusedGeminiRoot;}
-            if(applicationWindows==1&&soleGeminiApplicationRoot!=null){lastRootSource="interactive-window-sole-application";return soleGeminiApplicationRoot;}
+            if(focused!=null){lastRootSource=sourceFor(focused,"interactive-window-focused");return focused;}
+            if(activeWindow!=null){lastRootSource=sourceFor(activeWindow,"interactive-window-active");return activeWindow;}
+            if(activeTrusted){lastRootSource=sourceFor(active,"active-root-fallback");return active;}
+            if(applicationWindows==1&&sole!=null){lastRootSource=sourceFor(sole,"interactive-window-sole-application");return sole;}
         }catch(Exception e){lastWindowsSummary="resolverException="+e.getClass().getSimpleName();}
         return null;
     }
+
+    private boolean isTrustedGeminiCandidate(AccessibilityNodeInfo node){
+        if(node==null||node.getPackageName()==null)return false;CharSequence pkg=node.getPackageName();
+        if(GEMINI_PACKAGE.contentEquals(pkg))return true;if(!GEMINI_HOST_PACKAGE.contentEquals(pkg))return false;
+        long now=System.currentTimeMillis();
+        if(GeminiUi.isVerifiedGeminiSurface(node)){googleHostVerifiedUntilMs=now+GOOGLE_HOST_VERIFICATION_LEASE_MS;return true;}
+        return runner!=null&&now<=googleHostVerifiedUntilMs;
+    }
+    private static String sourceFor(AccessibilityNodeInfo node,String base){return GEMINI_HOST_PACKAGE.equals(packageName(node))?base+":google-host":base+":gemini-app";}
     private static String packageName(AccessibilityNodeInfo n){return n==null||n.getPackageName()==null?"":n.getPackageName().toString();}
-    private void rememberActive(ProfileSpec p){getSharedPreferences("aleyon_runtime",MODE_PRIVATE).edit().putString("active_profile_id",p.id).apply();}
-    private void clearActive(ProfileSpec p){getSharedPreferences("aleyon_runtime",MODE_PRIVATE).edit().remove("active_profile_id").apply();}
+
+    private void rememberActive(ProfileSpec p){if(p!=null)getSharedPreferences("aleyon_runtime",MODE_PRIVATE).edit().putString("active_profile_id",p.id).apply();}
+    private void clearActive(ProfileSpec p){if(p!=null)getSharedPreferences("aleyon_runtime",MODE_PRIVATE).edit().remove("active_profile_id").apply();}
     private String status(ProfileSpec p,String field){try{return journal.statusJson(p.id).optString(field,"");}catch(Exception e){return "";}}
-    private void showOverlay(ProfileSpec p){overlay.show(p.label,status(p,"objectiveToday"),status(p,"starterPhrase"));}
+    private void showOverlay(ProfileSpec p){if(overlay!=null)overlay.show(p.label,status(p,"objectiveToday"),status(p,"starterPhrase"));}
+
+    private void transition(ProfileSpec p,SessionStage next){if(p!=null)journal.stage(p.id,next);}
 
     private void recordDiagnostic(ProfileSpec p,String step,String result){
         try{
             AccessibilityNodeInfo r=resolveGeminiRoot();
             diagnostics.record(new AutomationDiagnostics(
-                    p==null?"":journal.activeSessionId(p.id), step,
-                    p==null?"":journal.stage(p.id).name(), p==null?"":journal.stage(p.id).name(),
-                    System.currentTimeMillis(), packageName(r), r!=null, GeminiUi.countNodes(r),
-                    "",0,result,lastRootSource,lastInteractiveWindowCount,lastWindowsSummary));
+                    journal.activeSessionId(p.id),step,journal.stage(p.id).name(),journal.stage(p.id).name(),
+                    System.currentTimeMillis(),packageName(r),r!=null,GeminiUi.countNodes(r),"",0,result,
+                    lastRootSource,lastInteractiveWindowCount,lastWindowsSummary));
         }catch(Exception ignored){}
     }
 
-    private enum Mode{START_LIVE,START_CHAT,WAIT,CLOSE}
+    private enum Mode { START_LIVE, START_CHAT, WAIT, CLOSE }
 
-    private final class Runner{
-        private Mode mode;private final ProfileSpec profile;private String sessionMode;private String sessionId;
-        private int step,retries,liveMissingChecks;private boolean finished,creatingNewChat;private String sessionEvidenceText="";
+    private final class Runner {
+        private Mode mode;
+        private final ProfileSpec profile;
+        private String sessionMode;
+        private String sessionId;
+        private int step,retries,liveMissingChecks,searchMisses;
+        private boolean finished,waitingForUserConsent,rebuildingConversation,searchAttempted;
+        private int transcriptSettlePasses;
+        private String sessionEvidenceText="", debriefBaselineText="", contextBaselineText="";
+        private String canonicalTitle="",canonicalRoute="";
         private final Runnable pumpRunnable=this::pump;
-        Runner(Mode mode,ProfileSpec p,String sessionMode){this.mode=mode;this.profile=p;this.sessionMode=sessionMode==null?"LIVE":sessionMode;this.sessionId=journal.activeSessionId(p.id);}
-        void schedule(long ms){if(finished)return;handler.removeCallbacks(pumpRunnable);handler.postDelayed(pumpRunnable,ms);}
-        void beginClose(){mode=Mode.CLOSE;step=0;retries=0;schedule(0);}
-        void pump(){if(finished)return;try{switch(mode){case START_LIVE,START_CHAT->pumpStart();case WAIT->pumpWait();case CLOSE->pumpClose();}}catch(Exception e){fail("Error interno: "+e.getClass().getSimpleName());}}
+
+        Runner(Mode mode,ProfileSpec p,String sessionMode){
+            this.mode=mode;this.profile=p;this.sessionMode=sessionMode==null?"LIVE":sessionMode;
+            this.sessionId=journal.activeSessionId(p.id);
+        }
+
+        void schedule(long delay){if(finished)return;handler.removeCallbacks(pumpRunnable);handler.postDelayed(pumpRunnable,delay);}
+        void abortWithoutCommit(){finished=true;handler.removeCallbacks(pumpRunnable);}
+        void beginClose(){
+            SessionStage current=journal.stage(profile.id);
+            SessionStage recoverable=journal.recoverableStage(profile.id);
+            boolean committedPath=isCloseableActiveStage(current)||isCloseableActiveStage(recoverable);
+            if(!committedPath){cancelToReady();return;}
+            mode=Mode.CLOSE;step=0;retries=0;transcriptSettlePasses=0;
+            if(overlay!=null)overlay.showWorking(profile.label,phaseLabel(Mode.CLOSE));schedule(0);
+        }
+        private boolean isCloseableActiveStage(SessionStage s){return isCloseableStage(s);}
+        private void cancelToReady(){
+            finished=true;handler.removeCallbacks(pumpRunnable);
+            try{AccessibilityNodeInfo r=root();if(r!=null)transport.clearComposer(r);}catch(Exception ignored){}
+            journal.clearError(profile.id);journal.clearRecoverableStage(profile.id);journal.stage(profile.id,SessionStage.READY);
+            journal.clearActiveSession(profile.id);clearActive(profile);
+            if(overlay!=null)overlay.hide();launchAleyon();
+        }
+
+        void pump(){
+            if(finished)return;
+            try{
+                AccessibilityNodeInfo blocker=root();
+                if(GeminiUi.isBlockingConsentDialog(blocker)){
+                    if(!waitingForUserConsent){waitingForUserConsent=true;if(overlay!=null)overlay.showNotice("Gemini requiere una decisión tuya. Aleyon no aceptará ni cancelará permisos por ti.");}
+                    schedule(1200);return;
+                }
+                if(waitingForUserConsent){waitingForUserConsent=false;if(overlay!=null)overlay.hideNotice();}
+                switch(mode){case START_LIVE,START_CHAT->pumpStart();case WAIT->pumpWait();case CLOSE->pumpClose();}
+            }catch(Exception e){fail("Error interno de automatización: "+e.getClass().getSimpleName());}
+        }
+
         private AccessibilityNodeInfo root(){return resolveGeminiRoot();}
-        private void advance(){step++;retries=0;schedule(STEP_DELAY_MS);} private void go(int n){step=n;retries=0;schedule(STEP_DELAY_MS);}
-        private boolean retry(String reason,boolean response){retries++;if(retries>(response?MAX_RESPONSE_RETRIES:MAX_UI_RETRIES)){fail(reason);return false;}schedule(response?RESPONSE_DELAY_MS:STEP_DELAY_MS);return true;}
+        private void advance(){step++;retries=0;schedule(STEP_DELAY_MS);}
+        private void go(int n){step=n;retries=0;schedule(STEP_DELAY_MS);}
+        private boolean retry(String reason,boolean response){
+            retries++;int max=response?MAX_RESPONSE_RETRIES:MAX_UI_RETRIES;
+            if(retries>max){fail(reason);return false;}schedule(response?RESPONSE_DELAY_MS:STEP_DELAY_MS);return true;
+        }
+        private boolean retryMarker(String reason){transport.scrollConversation(root());return retry(reason,true);}
         private String newSessionId(){return "session-"+UUID.randomUUID().toString().replace("-","").substring(0,16);}
+
+        private TransportObservation observe(){
+            return GeminiStateObserver.observe(root(),canonicalTitle);
+        }
+
+        private boolean retryAdaptive(String reason){
+            TransportObservation o=observe();
+            compatibility.recordFailure(profile.id,reason+" | "+o.state+" | "+o.evidence);
+            retries++;
+            if(retries>MAX_UI_RETRIES){
+                failUpdate(reason+" El transporte semántico no pudo recuperar esta variante de Gemini.");
+                return false;
+            }
+            schedule(STEP_DELAY_MS);return true;
+        }
 
         private void pumpStart(){
             if(!profile.canStart()){fail("Perfil incompleto para iniciar sesión.");return;}
             switch(step){
-                case 0->{sessionMode=mode==Mode.START_CHAT?"CHAT":"LIVE";sessionId=newSessionId();journal.activeSession(profile.id,sessionId,sessionMode);journal.stage(profile.id,SessionStage.LOCATING_CHAT);launchGemini();advance();}
-                case 1->{if(GeminiUi.clickAny(root(),"Menú","Menu","Abrir menú","Open menu"))advance();else retry("No pude abrir el menú de Gemini.",false);}
-                case 2->{if(GeminiUi.clickAny(root(),"Buscar chats","Search chats","Buscar conversaciones","Search conversations"))advance();else retry("No encontré Buscar chats.",false);}
-                case 3->{if(GeminiUi.setFirstEditable(root(),profile.chatName))advance();else retry("No encontré el campo de búsqueda de chats.",false);}
-                case 4->{
-                    int count=countExactText(root(),profile.chatName);
-                    if(count>1){failAmbiguous("Encontré más de un chat canónico exacto para este perfil.");return;}
-                    if(count==1&&GeminiUi.clickExact(root(),profile.chatName)){creatingNewChat=false;go(8);return;}
-                    retries++;if(retries<3){schedule(STEP_DELAY_MS);return;}
-                    // No canonical chat: return to Gemini and create exactly one.
-                    creatingNewChat=true;retries=0;performGlobalAction(GLOBAL_ACTION_BACK);performGlobalAction(GLOBAL_ACTION_BACK);launchGemini();journal.stage(profile.id,SessionStage.CREATING_CHAT);go(5);
+                case 0 -> {
+                    sessionMode=mode==Mode.START_CHAT?"CHAT":"LIVE";
+                    if(sessionId==null||sessionId.isEmpty())sessionId=newSessionId();
+                    canonicalTitle=conversations.title(profile);
+                    journal.activeSession(profile.id,sessionId,sessionMode);
+                    transition(profile,SessionStage.OPENING_SESSION_CHAT);
+                    launchGemini();advance();
                 }
-                case 5->{if(GeminiUi.clickAny(root(),"Nuevo chat","New chat","Chat nuevo")||GeminiUi.firstEditable(root())!=null)advance();else retry("No pude crear un chat nuevo.",false);}
-                case 6->{journal.baselineText(profile.id,"");sendCapsuleOrRetry();}
-                case 7->{if(waitContextReady()){go(12);}else retry("Gemini no confirmó la cápsula de continuidad.",true);}
-                case 8->{journal.baselineText(profile.id,GeminiUi.collectAllText(root()));sendCapsuleOrRetry();}
-                case 9->{if(waitContextReady())go(15);else retry("Gemini no confirmó la cápsula de continuidad.",true);}
-                case 12->{if(GeminiUi.clickAny(root(),"Más","More"))advance();else retry("No pude abrir el menú para nombrar el chat canónico.",false);}
-                case 13->{if(GeminiUi.clickAny(root(),"Cambiar nombre","Rename","Renombrar","Edit title"))advance();else retry("No encontré Renombrar.",false);}
-                case 14->{if(GeminiUi.setFirstEditable(root(),profile.chatName)){GeminiUi.clickAny(root(),"Guardar","Save","Aceptar","OK");go(15);}else retry("No pude escribir el nombre canónico.",false);}
-                case 15->{
-                    if("CHAT".equals(sessionMode)){journal.stage(profile.id,SessionStage.CHAT_ACTIVE);rememberActive(profile);showOverlay(profile);mode=Mode.WAIT;step=0;retries=0;return;}
-                    journal.stage(profile.id,SessionStage.LIVE_STARTING);
-                    if(GeminiUi.clickAny(root(),"Live","Gemini Live","Iniciar Live","Start Live"))advance();else retry("No encontré el botón Live.",false);
+                case 1 -> {
+                    TransportObservation o=observe();
+                    if(o.state==TransportState.UNAVAILABLE){retry("Gemini no expuso una superficie verificable.",false);return;}
+                    // A manually-opened Gemini Live session is an input state, not a catastrophe.
+                    // Return to chat chrome and normalize from there before touching any learner context.
+                    if(o.state==TransportState.LIVE_ACTIVE){
+                        performGlobalAction(GLOBAL_ACTION_BACK);schedule(STEP_DELAY_MS);return;
+                    }
+                    if(o.state==TransportState.UNKNOWN){retryAdaptive("Gemini quedó en un estado inicial desconocido.");return;}
+                    advance();
                 }
-                case 16->{if(GeminiUi.isLiveScreen(root())){journal.stage(profile.id,SessionStage.LIVE_ACTIVE);rememberActive(profile);showOverlay(profile);mode=Mode.WAIT;step=0;retries=0;}else retry("Live no llegó a estado activo.",true);}
+                case 2 -> {
+                    TransportObservation o=observe();AccessibilityNodeInfo r=root();
+                    if(o.state==TransportState.CONVERSATION_LIST){advance();return;}
+                    if(o.state==TransportState.NORMAL_CHAT||o.state==TransportState.TEMPORARY_CHAT){
+                        if(transport.openConversationList(r)){advance();return;}
+                        retryAdaptive("No pude abrir de forma semántica la lista de conversaciones de Gemini.");return;
+                    }
+                    if(o.state==TransportState.LIVE_ACTIVE){performGlobalAction(GLOBAL_ACTION_BACK);schedule(STEP_DELAY_MS);return;}
+                    retryAdaptive("No pude normalizar Gemini antes de resolver la conversación canónica.");
+                }
+                case 3 -> {
+                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+                    if(o.state!=TransportState.CONVERSATION_LIST){retryAdaptive("Gemini no confirmó la lista de conversaciones.");return;}
+                    if(o.canonicalConversationVisible){
+                        if(transport.openCanonicalConversation(r,canonicalTitle)){
+                            rebuildingConversation=false;canonicalRoute="drawer-title";go(7);return;
+                        }
+                        retryAdaptive("La conversación canónica estaba visible pero no pudo abrirse.");return;
+                    }
+                    if(!searchAttempted&&transport.openConversationSearch(r)){
+                        searchAttempted=true;go(4);return;
+                    }
+                    conversations.markMissing(profile);
+                    if(transport.createNormalConversation(r)){
+                        rebuildingConversation=true;canonicalRoute="rebuild-new-chat";go(7);return;
+                    }
+                    retryAdaptive("No encontré el chat canónico ni pude crear un chat normal para reconstruirlo.");
+                }
+                case 4 -> {
+                    if(transport.searchConversation(root(),canonicalTitle)){advance();return;}
+                    retryAdaptive("No pude escribir la búsqueda del chat canónico.");
+                }
+                case 5 -> {
+                    AccessibilityNodeInfo r=root();
+                    if(transport.hasCanonicalConversation(r,canonicalTitle)){
+                        if(transport.openCanonicalConversation(r,canonicalTitle)){
+                            rebuildingConversation=false;canonicalRoute="drawer-search";go(7);return;
+                        }
+                        retryAdaptive("Encontré el chat canónico en búsqueda, pero no pude abrirlo.");return;
+                    }
+                    if(++searchMisses<4){schedule(RESPONSE_DELAY_MS);return;}
+                    // Search miss is not fatal. Go back to the drawer and rebuild from local truth.
+                    performGlobalAction(GLOBAL_ACTION_BACK);go(2);
+                }
+                case 7 -> {
+                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+                    if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){
+                        retryAdaptive("La conversación seleccionada no llegó a un chat normal verificable.");return;
+                    }
+                    if("LIVE".equals(sessionMode)&&!o.liveAvailable){
+                        retry("Esperando a que Gemini exponga Live en el chat normal.",true);return;
+                    }
+                    if(!rebuildingConversation){
+                        conversations.markVerified(profile,false);
+                        compatibility.recordSuccess(profile.id,canonicalRoute,o.evidence);
+                    }
+                    transition(profile,SessionStage.CONTEXT_INJECTING);
+                    contextBaselineText=transport.collectConversationText(r);
+                    LearningLedger ledger=learning.load(profile.id);
+                    String payload=prompts.contextCapsule(profile,ledger,sessionId,"LIVE".equals(sessionMode),rebuildingConversation);
+                    SessionIntent intent=new SessionIntent(profile.id,sessionId,canonicalTitle,
+                            "CHAT".equals(sessionMode)?SessionIntent.Mode.CHAT:SessionIntent.Mode.LIVE,payload,rebuildingConversation);
+                    if(transport.sendContext(r,intent.contextPayload)){advance();return;}
+                    retryAdaptive("No pude entregar el contexto de Aleyon a Gemini.");
+                }
+                case 8 -> {
+                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+                    if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){
+                        retry("Gemini todavía no devolvió el compositor después de recibir el contexto.",true);return;
+                    }
+                    if("LIVE".equals(sessionMode)&&!o.liveAvailable){
+                        retry("Esperando a que Gemini termine de responder y vuelva a mostrar Live.",true);return;
+                    }
+                    String all=transport.collectConversationText(r);
+                    journal.baselineText(profile.id,all);
+                    transition(profile,SessionStage.CONTEXT_READY);
+                    if(rebuildingConversation)go(9);else go(13);
+                }
+                case 9 -> {
+                    if(transport.openChatOptions(root()))advance();
+                    else retryAdaptive("No pude abrir las opciones del chat recién reconstruido.");
+                }
+                case 10 -> {
+                    if(transport.chooseRename(root()))advance();
+                    else retryAdaptive("No pude localizar la acción semántica para nombrar el chat canónico.");
+                }
+                case 11 -> {
+                    if(transport.setCanonicalTitle(root(),canonicalTitle))advance();
+                    else retryAdaptive("No pude escribir el nombre del chat canónico.");
+                }
+                case 12 -> {
+                    if(transport.saveCanonicalTitle(root())){
+                        conversations.markVerified(profile,true);
+                        compatibility.recordSuccess(profile.id,"rebuild-rename","canonical="+canonicalTitle);
+                        go(13);return;
+                    }
+                    retryAdaptive("No pude confirmar el nombre del chat canónico.");
+                }
+                case 13 -> {
+                    if("CHAT".equals(sessionMode)){
+                        transition(profile,SessionStage.CHAT_ACTIVE);rememberActive(profile);showOverlay(profile);
+                        mode=Mode.WAIT;step=0;retries=0;return;
+                    }
+                    transition(profile,SessionStage.LIVE_STARTING);
+                    if(transport.startLive(root()))advance();
+                    else retryAdaptive("No encontré un acceso verificable a Gemini Live.");
+                }
+                case 14 -> {
+                    if(transport.isLiveActive(root())){
+                        transition(profile,SessionStage.LIVE_ACTIVE);rememberActive(profile);showOverlay(profile);
+                        mode=Mode.WAIT;step=0;retries=0;
+                    }else retry("Gemini Live no llegó a estado activo.",true);
+                }
+                default -> {}
             }
         }
 
-        private void sendCapsuleOrRetry(){
-            LearningLedger ledger=learning.load(profile.id);String capsule=prompts.contextCapsule(profile,ledger,sessionId,"LIVE".equals(sessionMode));
-            journal.stage(profile.id,SessionStage.CONTEXT_INJECTING);
-            if(GeminiUi.sendMessage(root(),capsule))advance();else retry("No pude enviar la cápsula de continuidad.",false);
-        }
-        private boolean waitContextReady(){String all=GeminiUi.collectAllText(root());if(SessionReportParser.hasSessionReady(all,sessionId,profile.id)){journal.stage(profile.id,SessionStage.CONTEXT_READY);return true;}return false;}
-
         private void pumpWait(){
-            AccessibilityNodeInfo r=root();if(!GeminiUi.isGeminiRoot(r))return;
-            if("CHAT".equals(sessionMode))return; // user closes Chat from the Aleyon bubble
-            if(GeminiUi.isLiveScreen(r)){liveMissingChecks=0;return;}
-            if(++liveMissingChecks>=2)beginClose();else schedule(650);
+            AccessibilityNodeInfo r=root();if(!transport.isGeminiSurface(r))return;
+            if("CHAT".equals(sessionMode))return;
+            if(transport.isLiveActive(r)){liveMissingChecks=0;return;}
+            if(++liveMissingChecks>=2)beginClose();else schedule(650L);
         }
 
         private void pumpClose(){
+            if(sessionId==null||sessionId.isEmpty()){fail("No existe SESSION_ID para cerrar esta sesión.");return;}
             switch(step){
-                case 0->{journal.stage(profile.id,SessionStage.CLOSING_SESSION);launchGemini();advance();}
-                case 1->{
-                    if(GeminiUi.isLiveScreen(root())){boolean clicked=GeminiUi.clickAny(root(),"Cerrar","Close","Finalizar","End","Salir de Live","End Live");if(!clicked)performGlobalAction(GLOBAL_ACTION_BACK);schedule(TRANSCRIPT_SETTLE_MS);return;}
+                case 0 -> {transition(profile,SessionStage.CLOSING_SESSION);launchGemini();advance();}
+                case 1 -> {
+                    AccessibilityNodeInfo r=root();
+                    if("LIVE".equals(sessionMode)&&transport.isLiveActive(r)){
+                        boolean clicked=transport.endLive(r);
+                        if(!clicked)performGlobalAction(GLOBAL_ACTION_BACK);
+                        go(2);return;
+                    }
                     advance();
                 }
-                case 2->{journal.stage(profile.id,SessionStage.WAITING_TRANSCRIPT);schedule(TRANSCRIPT_SETTLE_MS);step=3;}
-                case 3->{
-                    // Prefer the current chat after Live. If an editable composer is absent, resolve the canonical chat explicitly.
-                    if(GeminiUi.firstEditable(root())!=null){sessionEvidenceText=SessionTextDelta.delta(journal.baselineText(profile.id),GeminiUi.collectAllText(root()));advance();return;}
-                    launchGemini();go(20);
+                case 2 -> {transition(profile,SessionStage.WAITING_TRANSCRIPT);schedule(TRANSCRIPT_SETTLE_MS);step=3;}
+                case 3 -> {
+                    AccessibilityNodeInfo r=root();
+                    if(r==null||!transport.hasComposer(r)){
+                        retry("Gemini todavía no devolvió la misma conversación después de la sesión.",false);return;
+                    }
+                    if(transcriptSettlePasses<3){transcriptSettlePasses++;transport.scrollConversation(r);schedule(TRANSCRIPT_SETTLE_MS);return;}
+                    sessionEvidenceText=SessionTextDelta.delta(journal.baselineText(profile.id),transport.collectConversationText(r));
+                    if(sessionEvidenceText.trim().length()<20){finishReady();return;}
+                    advance();
                 }
-                case 4->{journal.stage(profile.id,SessionStage.ANALYZING);if(GeminiUi.sendMessage(root(),prompts.sessionReport(profile,sessionId)))advance();else retry("No pude solicitar el informe de sesión.",false);}
-                case 5->{
-                    SessionReportParser.Report report=SessionReportParser.parse(GeminiUi.collectAllText(root()),sessionId,profile.id,sessionEvidenceText);
-                    if(report==null){retry("Gemini aún no devolvió el informe estructurado de esta sesión.",true);return;}
-                    journal.stage(profile.id,SessionStage.COMMITTING);learning.commit(profile.id,report,sessionId);
-                    if(!report.nextObjective.isEmpty())journal.sessionHints(profile.id,report.nextObjective,"");
+                case 4 -> {
+                    transition(profile,SessionStage.ANALYZING);
+                    AccessibilityNodeInfo r=root();
+                    debriefBaselineText=transport.collectConversationText(r);
+                    if(transport.sendContext(r,prompts.sessionDebrief(profile)))advance();
+                    else retry("No pude solicitar el cierre breve de esta sesión.",false);
+                }
+                case 5 -> {
+                    String all=transport.collectConversationText(root());
+                    String debriefDelta=SessionTextDelta.delta(debriefBaselineText,all);
+                    SessionReportParser.Report report=SessionReportParser.parseDebrief(debriefDelta);
+                    if(report==null){retryMarker("Gemini aún no terminó el cierre breve de esta sesión.");return;}
+                    transition(profile,SessionStage.COMMITTING);
+                    if(!learning.commitVerified(profile.id,report,sessionId,sessionEvidenceText)){
+                        fail("No pude verificar el commit local de la memoria de aprendizaje.");return;
+                    }
+                    String summary=report.summary;
+                    if(!report.feedback.isEmpty())summary=(summary.isEmpty()?"":summary+"\n\n")+"Consejo: "+report.feedback;
+                    if(!report.nextObjective.isEmpty())summary=(summary.isEmpty()?"":summary+"\n")+"Próximo objetivo: "+report.nextObjective;
+                    journal.appendCloseSummary(profile.id,summary);
+                    journal.sessionHints(profile.id,report.nextObjective,"");
                     try{profile.sessions++;journal.saveProfile(profile);}catch(Exception ignored){}
+                    NotificationHelper.postSessionClosed(AleyonAccessibilityService.this,profile.id,profile.label,summary);
                     finishReady();
                 }
-                case 20->{if(GeminiUi.clickAny(root(),"Menú","Menu","Abrir menú","Open menu"))advance();else retry("No pude abrir el menú para localizar el chat al cerrar.",false);}
-                case 21->{if(GeminiUi.clickAny(root(),"Buscar chats","Search chats","Buscar conversaciones","Search conversations"))advance();else retry("No encontré Buscar chats al cerrar.",false);}
-                case 22->{if(GeminiUi.setFirstEditable(root(),profile.chatName))advance();else retry("No encontré el buscador al cerrar.",false);}
-                case 23->{int count=countExactText(root(),profile.chatName);if(count>1){failAmbiguous("Hay más de un chat canónico exacto al cerrar.");}else if(count==1&&GeminiUi.clickExact(root(),profile.chatName)){go(24);}else retry("No pude localizar el chat canónico para cerrar.",false);}
-                case 24->{if(GeminiUi.firstEditable(root())!=null){sessionEvidenceText=SessionTextDelta.delta(journal.baselineText(profile.id),GeminiUi.collectAllText(root()));go(4);}else retry("El chat canónico aún no terminó de abrir al cerrar.",false);}
+                default -> {}
             }
         }
 
-        private void finishReady(){finished=true;journal.clearError(profile.id);journal.stage(profile.id,SessionStage.READY);journal.clearActiveSession(profile.id);clearActive(profile);if(overlay!=null)overlay.hide();launchAleyon();}
-        private void fail(String msg){recordDiagnostic(profile,"FAIL",msg);finished=true;journal.error(profile.id,msg,SessionStage.ERROR);if(overlay!=null)overlay.hide();launchAleyon();}
-        private void failAmbiguous(String msg){recordDiagnostic(profile,"AMBIGUOUS",msg);finished=true;journal.error(profile.id,msg,SessionStage.AMBIGUOUS_USER_REQUIRED);if(overlay!=null)overlay.hide();launchAleyon();}
-        private int countExactText(AccessibilityNodeInfo root,String exact){if(root==null||exact==null)return 0;String wanted=exact.trim();Queue<AccessibilityNodeInfo>q=new ArrayDeque<>();q.add(root);int count=0;while(!q.isEmpty()){AccessibilityNodeInfo n=q.remove();CharSequence t=n.getText();if(t!=null&&wanted.equals(t.toString().trim()))count++;for(int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo c=n.getChild(i);if(c!=null)q.add(c);}}return count;}
+        private void finishReady(){
+            finished=true;journal.clearError(profile.id);journal.clearRecoverableStage(profile.id);
+            journal.stage(profile.id,SessionStage.READY);journal.clearActiveSession(profile.id);clearActive(profile);
+            if(overlay!=null)overlay.hide();launchAleyon();
+        }
+        private void failUpdate(String msg){
+            recordDiagnostic(profile,"APP_UPDATE_REQUIRED",msg);
+            SessionStage safe=journal.stage(profile.id);journal.recoverableStage(profile.id,safe);
+            journal.appendErrorHistory(profile.id,msg,SessionStage.APP_UPDATE_REQUIRED);
+            journal.error(profile.id,msg,SessionStage.APP_UPDATE_REQUIRED);finished=true;
+            if(overlay!=null)overlay.markNeedsAttention();launchAleyon();
+        }
+
+        private void fail(String msg){
+            recordDiagnostic(profile,"FAIL",msg);SessionStage safe=journal.stage(profile.id);journal.recoverableStage(profile.id,safe);
+            journal.appendErrorHistory(profile.id,msg,SessionStage.ERROR);journal.error(profile.id,msg,SessionStage.ERROR);
+            finished=true;if(overlay!=null)overlay.markNeedsAttention();launchAleyon();
+        }
+        private void failAmbiguous(String msg){
+            recordDiagnostic(profile,"AMBIGUOUS",msg);SessionStage safe=journal.stage(profile.id);journal.recoverableStage(profile.id,safe);
+            journal.appendErrorHistory(profile.id,msg,SessionStage.AMBIGUOUS_USER_REQUIRED);
+            journal.error(profile.id,msg,SessionStage.AMBIGUOUS_USER_REQUIRED);finished=true;
+            if(overlay!=null)overlay.markNeedsAttention();launchAleyon();
+        }
+
     }
 }

@@ -1,10 +1,9 @@
 package com.aleyon.geminibridge.core;
 
-/** Transaction stages for Bridge 0.4. No notebook/attach-detach states remain. */
+/** Persistent transaction states. States describe only the local-memory chat/Live transaction. */
 public enum SessionStage {
     READY,
-    LOCATING_CHAT,
-    CREATING_CHAT,
+    OPENING_SESSION_CHAT,
     CONTEXT_INJECTING,
     CONTEXT_READY,
     LIVE_STARTING,

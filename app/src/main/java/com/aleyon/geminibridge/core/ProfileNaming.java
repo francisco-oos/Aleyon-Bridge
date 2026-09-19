@@ -5,24 +5,21 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
 
-/** Naming is UX; profile id is identity. Bridge 0.4 owns no Gemini notebooks. */
+/** Naming is UX; profile id is identity. Aleyon owns identity; provider-side titles are only navigation UX. */
 public final class ProfileNaming {
-    public static final String CHAT_PREFIX = "ALEYON LIVE — ";
+    public static final String CHAT_PREFIX = "ALEYON — ";
     private ProfileNaming() {}
-
-    public static String chatName(String label) {
-        String clean = label == null ? "Idioma" : label.trim();
-        return CHAT_PREFIX + title(clean) + " — Conversación principal";
-    }
-
-    public static boolean isManagedChatName(String name) {
-        return name != null && name.startsWith(CHAT_PREFIX) && name.endsWith(" — Conversación principal");
-    }
 
     public static String profileId(String label) {
         String key = normalizedKey(label).replace(' ', '-');
         if (!key.isEmpty() && key.matches("[a-z0-9-]+")) return "lang-" + key;
         return "lang-u-" + shortHash(label == null ? "" : label);
+    }
+
+    public static boolean isValidProfileId(String value) {
+        if(value==null)return false;
+        String v=value.trim();
+        return v.matches("lang-[a-z0-9-]{1,120}") || v.matches("lang-u-[0-9a-f]{8,64}");
     }
 
     public static String normalizedKey(String value) {

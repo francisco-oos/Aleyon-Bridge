@@ -1,13 +1,9 @@
 package com.aleyon.geminibridge.core;
 
 /**
- * Structured diagnostic snapshot for one Bridge automation transition.
- *
- * Accessibility against a third-party app is inherently sensitive to window
- * timing and UI rollouts. This record keeps enough evidence to diagnose a
- * failed canonical-chat, context-injection, Live/Chat, or close operation
- * without requiring a debugger on the phone. It never stores credentials,
- * audio, or the complete conversation.
+ * Structured diagnostic snapshot for one automation step.
+ * Captures enough state to diagnose Android/Gemini UI drift without a live debugger:
+ * transition, visible package/root, selector, candidates and window provenance.
  */
 public final class AutomationDiagnostics {
     public final String runId;

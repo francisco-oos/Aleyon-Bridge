@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Aleyon Idiomas</string>
-    <string name="accessibility_service_label">Aleyon Idiomas — Automatización Gemini</string>
-    <string name="accessibility_service_description">Automatiza únicamente el flujo determinista de Aleyon dentro de Gemini: chat canónico, contexto, inicio y cierre de Chat/Live. No graba audio ni controla otras apps.</string>
+    <string name="app_name">Aleyon Bright</string>
+    <string name="accessibility_service_label">Aleyon Bright — Automatización Gemini</string>
+    <string name="accessibility_service_description">Automatiza únicamente el flujo determinista de Aleyon dentro de la superficie Gemini, que Android puede alojar en la app Gemini o en el host oficial de Google. Verifica la interfaz antes de actuar; no graba audio ni automatiza Búsqueda/Discover.</string>
 </resources>
