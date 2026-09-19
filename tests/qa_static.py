@@ -86,6 +86,7 @@ check('FOCUS_INPUT' in artemis_root and 'FOCUS_ACCESSIBILITY' in artemis_root,'A
 check('SystemClock.sleep' not in artemis_root and 'RETRY_BACKOFF_MS' not in artemis_root,'Blocking programmed waits returned to Artemis root resolution')
 check('MAX_START_RUNTIME_MS' in service and 'MAX_CLOSE_RUNTIME_MS' in service,'Anti-freeze transport watchdog missing')
 check('artemisStartAgent.nextContext' in service and 'artemisStartAgent.nextLive' in service,'Artemis does not govern start-session transport end-to-end')
+check('ARTEMIS_POLICY_VERSION=3' in service and '"policy-"+ARTEMIS_POLICY_VERSION' in service,'Artemis routine compatibility namespace missing')
 check('SCROLL_FORWARD' in artemis_flash and 'SCROLL_BACKWARD' in artemis_flash,'Artemis cannot learn viewport exploration')
 check('isShowingHintText' in ui and 'structuralLiveCandidate' in ui,'Live structural fallback treats placeholder text as typed content')
 check('isResponseInProgress' in ui and 'hasRespondNow' in ui and 'clickRespondNow' in ui,'Gemini response-progress recovery capability missing')
