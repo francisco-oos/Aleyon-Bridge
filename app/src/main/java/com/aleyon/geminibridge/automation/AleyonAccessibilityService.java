@@ -34,10 +34,10 @@ import java.util.UUID;
  * Aleyon Bridge runtime on the field-tested alpha11 Android/Gemini layer.
  *
  * Aleyon owns profile, continuity and learning evidence. Gemini remains the
- * native cognitive/Live/multimodal surface. Each session opens a normal
- * canonical Gemini conversation, injects bounded Aleyon context, runs Chat/Live,
- * then commits learning back to Aleyon. Provider history is useful but never
- * required for continuity because local memory remains authoritative.
+ * native cognitive/Live/multimodal surface. Each explicit session starts in
+ * a fresh normal Gemini chat, injects bounded local continuity, runs Chat/Live,
+ * then commits learning back to Aleyon. Provider chat history is disposable:
+ * local Aleyon memory is the only continuity authority.
  */
 public final class AleyonAccessibilityService extends AccessibilityService
         implements OverlayController.Listener {
@@ -127,7 +127,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
             case CLOSING_SESSION -> "Cerrando";
             case WAITING_TRANSCRIPT, COMMITTING -> "Guardando";
             case ANALYZING -> "Resumiendo";
-            case RECOVERING -> "Recuperando";
+            case RECOVERING -> "Listo";
             case ERROR, AMBIGUOUS_USER_REQUIRED, USER_ACTION_REQUIRED -> "Requiere atención";
             case APP_UPDATE_REQUIRED -> "Compatibilidad";
         };
@@ -221,11 +221,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
             case WAIT -> "Sesión activa";
             case CLOSE -> "Guardando sesión…";
         };
-    }
-
-    private void failWithoutRunner(ProfileSpec p,String msg,SessionStage terminal){
-        if(p!=null){SessionStage old=journal.stage(p.id);journal.recoverableStage(p.id,old);journal.appendErrorHistory(p.id,msg,terminal);journal.error(p.id,msg,terminal);rememberActive(p);if(overlay!=null){overlay.show(p.label,"","");overlay.markNeedsAttention();}}
-        launchAleyon();
     }
 
     private void finishReadyOutsideRunner(ProfileSpec p){
