@@ -82,7 +82,7 @@ public final class ArtemisFlashAgent {
         Action fallback=switch(o.state){
             case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
             case NORMAL_CHAT -> {
-                if(payloadPrepared)yield Action.SUBMIT_CONTEXT;
+                if(payloadPrepared)yield submitAttempts<3?Action.SUBMIT_CONTEXT:Action.FAIL_CLOSED;
                 if(!writeIssued)yield Action.WRITE_CONTEXT;
                 if(submitAttempts<3)yield Action.WAIT;
                 yield Action.FAIL_CLOSED;
