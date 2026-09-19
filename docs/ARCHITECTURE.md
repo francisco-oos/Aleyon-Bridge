@@ -60,6 +60,18 @@ Routing is deliberately asymmetric: an existing profile with no local canonical-
 
 If the canonical conversation is deleted, reconstruction uses local learner truth. The provider chat is a cognitive cache, not memory ownership.
 
+## Embedded Artemis execution scope
+
+The embedded Artemis runtime owns the complete start transport, not only canonical-chat navigation. It keeps independent learned routines for:
+
+- `canonical-nav`: reach/recover the correct Gemini conversation;
+- `context-delivery`: write the continuity capsule, submit it and verify the postcondition;
+- `live-start`: activate Live and verify `LIVE_ACTIVE`.
+
+A context submit is successful only when a fresh observation proves that the prepared payload left the composer and the conversation advanced. If the user submits manually during recovery, Bridge accepts the observed postcondition but does not falsely record that manual action as an automated success. Three unverified submit attempts invalidate/fail the route quickly instead of consuming the generic UI retry budget.
+
+Routine learning is intentionally narrower than full upstream Artemis Flash/Explorer. The APK stores and replays verified semantic state/action sequences and invalidates them on mismatch. Full novel-UI reasoning in upstream Artemis uses a host-side model/runtime; it is not silently claimed to exist inside the offline-safe Bridge APK.
+
 ## Observe → act → verify → recover
 
 - **observe**: classify current Gemini state (`TransportState`);
