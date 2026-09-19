@@ -456,7 +456,8 @@ public final class OverlayController {
         String stage=status==null?"":status.stageLabel;
         boolean inLive="En Live".equals(stage);
         boolean inChat="En chat".equals(stage);
-        boolean closing="Cerrando".equals(stage)||"Guardando".equals(stage)||"Resumiendo".equals(stage);
+        boolean closing="Cerrando".equals(stage)||"Guardando".equals(stage)
+                ||"Resumiendo".equals(stage)||"Esperando resumen".equals(stage);
 
         if(inLive||inChat||closing){
             TextView hint=new TextView(service);
@@ -464,7 +465,7 @@ public final class OverlayController {
                     ? "Al cerrar, Aleyon finalizará Live y guardará el progreso del chat actual."
                     : inChat
                         ? "Al cerrar, Aleyon guardará el progreso de este chat."
-                        : "Cierre en curso. Aleyon está esperando o guardando el resultado.");
+                        : "Cierre en curso. Si Gemini tarda por la conexión, Aleyon seguirá esperando y guardará al recibir un resumen verificable.");
             hint.setTextSize(12f);
             hint.setTextColor(Color.rgb(70,82,105));
             hint.setPadding(0,8,0,10);

@@ -292,6 +292,14 @@ public final class GeminiUi {
         return null;
     }
 
+    /** Structural evidence of a normal conversation even when controls are off-screen. */
+    public static boolean hasConversationViewport(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        return findByViewIdSuffix(root, "assistant_robin_conversation_container") != null
+                || findByViewIdSuffix(root, "assistant_robin_chat_history_list") != null
+                || findByViewIdSuffix(root, "assistant_robin_chat_history_sheet") != null;
+    }
+
     /** True only for a clean normal chat with no visible conversation messages yet. */
     public static boolean isBlankNormalChat(AccessibilityNodeInfo root) {
         if (root == null || isTemporaryChat(root) || isConversationSearchOpen(root)

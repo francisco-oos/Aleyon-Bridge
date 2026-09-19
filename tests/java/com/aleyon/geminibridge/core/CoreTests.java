@@ -3,7 +3,7 @@ package com.aleyon.geminibridge.core;
 public final class CoreTests {
     private static int passed=0;
     public static void main(String[] args){
-        testNaming();testTransportState();testDebriefParser();testDebriefMarkdown();testDebriefRejectIncomplete();
+        testNaming();testTransportState();testDebriefParser();testDebriefMarkdown();testDebriefRejectIncomplete();testDebriefStreaming();
         testTextDelta();testSchemaV5();testScreenBounds();testLedger();testDiagnostics();
         testMaterialPolicy();testProfileMatrix();testAdversarialInputs();
         System.out.println("PASS core tests: "+passed);
@@ -42,6 +42,12 @@ public final class CoreTests {
     }
     private static void testDebriefRejectIncomplete(){
         ok(SessionReportParser.parseDebrief("Resumen: Sólo una línea") == null);passed++;
+    }
+    private static void testDebriefStreaming(){
+        String partial="Resumen: Conversamos.\nAvance: Mejor ritmo.\nA reforzar: Pasado.";
+        ok(SessionReportParser.parseDebrief(partial)==null);
+        String complete=partial+"\nPróximo paso: Practicar entrevista.";
+        ok(SessionReportParser.parseDebrief(complete)!=null);passed++;
     }
     private static void testTextDelta(){
         String d=SessionTextDelta.delta("A\nB\n","A\nB\nC\nD\n");

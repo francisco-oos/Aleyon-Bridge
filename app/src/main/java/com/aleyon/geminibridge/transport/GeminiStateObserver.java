@@ -29,10 +29,11 @@ public final class GeminiStateObserver {
         if(GeminiUi.isTemporaryChat(root))
             return new TransportObservation(TransportState.TEMPORARY_CHAT,
                     GeminiUi.chatComposer(root)!=null,false,"temporary-chat");
-        if(GeminiUi.isGeminiRoot(root)&&GeminiUi.chatComposer(root)!=null) {
-            boolean live=GeminiUi.hasVisibleGeminiLiveLauncher(root);
-            return new TransportObservation(TransportState.NORMAL_CHAT,true,live,
-                    live?"normal-chat+live":"normal-chat");
+        if(GeminiUi.isGeminiRoot(root)&&GeminiUi.hasConversationViewport(root)) {
+            boolean composer=GeminiUi.chatComposer(root)!=null;
+            boolean live=composer&&GeminiUi.hasVisibleGeminiLiveLauncher(root);
+            return new TransportObservation(TransportState.NORMAL_CHAT,composer,live,
+                    live?"normal-chat+live":composer?"normal-chat":"normal-chat-scrolled");
         }
         return new TransportObservation(TransportState.UNKNOWN,false,false,"unclassified-gemini-state");
     }

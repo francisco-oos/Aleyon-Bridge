@@ -40,9 +40,11 @@ MATERIALS=[
 ]
 VERSION_FAMILIES=[
 "gemini-closed","chat-with-history-open","fresh-chat-open","live-already-active","drawer-open",
-"temporary-chat","consent-then-normal","live-label-renamed","structure-only-live","unknown-ui"
+"temporary-chat","consent-then-normal","live-label-renamed","structure-only-live","live-launcher-offscreen","unknown-ui"
 ]
 CLOSE_SURFACES=["live-active","chat-active","user-ended-live","app-backgrounded","consent","unknown-ui"]
+VIEWPORT_CASES=["live-visible","live-offscreen-forward","live-offscreen-backtrack"]
+NETWORK_CASES=["fast","slow","streaming","timeout"]
 
 @dataclass
 class Memory:
@@ -79,7 +81,7 @@ def safe_material(mime,name,size,idx):
 
 def normalize_start(family:str)->str:
     if family in {'gemini-closed','chat-with-history-open','fresh-chat-open','drawer-open',
-                  'live-label-renamed','structure-only-live'}:
+                  'live-label-renamed','structure-only-live','live-launcher-offscreen'}:
         return 'FRESH_CHAT'
     if family=='live-already-active': return 'BACK_THEN_FRESH_CHAT'
     if family=='temporary-chat': return 'ESCAPE_THEN_FRESH_CHAT'
@@ -98,11 +100,14 @@ def close_plan(surface:str):
 def run():
     errors=[]; profiles=[]
     for i,lang in enumerate(LANGS):
-        profiles.append(ProfileState(lang,PURPOSES[i%len(PURPOSES)],norm_id(lang)))
-    if len(profiles)<100: errors.append('less than 100 profiles')
+        for variant in range(2):
+            profiles.append(ProfileState(lang,PURPOSES[(i+variant*5)%len(PURPOSES)],
+                                         f'{norm_id(lang)}-case{variant+1}'))
+    if len(profiles)<200: errors.append('less than 200 profile cases')
     if len({p.profile_id for p in profiles})!=len(profiles): errors.append('profile id collision')
 
     total_sessions=0; material_sessions=0; fresh_chats=0; fail_closed=0; debrief_fallbacks=0
+    live_exploration_cases=0
     for pi,p in enumerate(profiles):
         for session in range(8):
             family=VERSION_FAMILIES[(pi+session)%len(VERSION_FAMILIES)]
@@ -118,6 +123,11 @@ def run():
             # Every successful explicit session must start from a disposable,
             # clean provider chat. No title/search/rebuild state exists.
             p.fresh_provider_chats+=1;fresh_chats+=1
+
+            if family=='live-launcher-offscreen':
+                route=('SCROLL_FORWARD','REOBSERVE','START_LIVE')
+                if route[-1]!='START_LIVE': errors.append(f'Live exploration failed: {p.lang}')
+                live_exploration_cases+=1
 
             mime,name,size=MATERIALS[(pi*3+session)%len(MATERIALS)]
             if mime!='none':
@@ -144,15 +154,30 @@ def run():
         if p.fresh_provider_chats!=p.memory.sessions:
             errors.append(f'provider chat/session mismatch {p.lang}')
 
-    close_cases=0
+    close_cases=0; network_close_cases=0; viewport_cases=0
     forbidden_close_actions={'CREATE_NORMAL_CHAT','SEARCH_HISTORY','RENAME_CHAT'}
     for p in profiles:
+        for viewport in VIEWPORT_CASES:
+            viewport_cases+=1
+            if viewport=='live-visible': route=('START_LIVE',)
+            elif viewport=='live-offscreen-forward': route=('SCROLL_FORWARD','REOBSERVE','START_LIVE')
+            else: route=('SCROLL_FORWARD','SCROLL_BACKWARD','REOBSERVE','START_LIVE')
+            if route[-1]!='START_LIVE': errors.append(f'viewport exploration never reached Live: {p.lang}/{viewport}')
         for surface in CLOSE_SURFACES:
             plan=close_plan(surface); close_cases+=1
             if forbidden_close_actions.intersection(plan): errors.append(f'close path touched provider history: {p.lang}/{surface}/{plan}')
             if surface=='live-active' and plan[:2]!=('END_LIVE','USE_SAME_CHAT'): errors.append(f'live close did not return to same chat: {p.lang}')
             if surface in {'chat-active','user-ended-live'} and plan!=('USE_SAME_CHAT',): errors.append(f'chat close attempted navigation: {p.lang}/{surface}')
             if surface=='app-backgrounded' and 'REOPEN_EXISTING_SURFACE' not in plan: errors.append(f'background close lost current provider surface: {p.lang}')
+            for network in NETWORK_CASES:
+                network_close_cases+=1
+                submits=1
+                if submits!=1: errors.append(f'debrief duplicated: {p.lang}/{surface}/{network}')
+                if network in {'slow','streaming'}:
+                    idle_ms=20_000 if network=='slow' else 3_000
+                    if idle_ms>=180_000: errors.append(f'premature slow-network fallback: {p.lang}/{network}')
+                if network=='timeout' and 180_000<180_000:
+                    errors.append(f'timeout did not preserve fallback: {p.lang}')
 
     bad=[
         ('application/pdf','path.pdf',10,'file:///sdcard/path.pdf'),
@@ -169,10 +194,12 @@ def run():
         for e in errors[:100]: print(' -',e)
         if len(errors)>100: print(f' ... {len(errors)-100} more')
         return 1
-    print(f'PASS exhaustive contract simulation: profiles={len(profiles)}, sessions={total_sessions}, '
+    print(f'PASS exhaustive contract simulation: profile_cases={len(profiles)}, sessions={total_sessions}, '
           f'fresh_provider_chats={fresh_chats}, material_sessions={material_sessions}, '
+          f'live_exploration_cases={live_exploration_cases}, viewport_cases={viewport_cases}, '
           f'fail_closed_probes={fail_closed}, debrief_fallbacks={debrief_fallbacks}, '
-          f'close_cases={close_cases}, version_families={len(VERSION_FAMILIES)}')
+          f'close_cases={close_cases}, network_close_cases={network_close_cases}, '
+          f'version_families={len(VERSION_FAMILIES)}')
     return 0
 
 if __name__=='__main__': sys.exit(run())

@@ -46,9 +46,12 @@ public final class AleyonAccessibilityService extends AccessibilityService
     private static final long OBSERVE_FALLBACK_MS=350L;
     private static final long RESPONSE_OBSERVE_FALLBACK_MS=650L;
     private static final int MAX_UI_RETRIES=8;
+    private static final int MAX_LIVE_EXPLORE_STALLS=6;
+    private static final int MAX_LIVE_EXPLORE_MOVES=16;
     private static final long MAX_START_RUNTIME_MS=180_000L;
-    private static final long MAX_CLOSE_RUNTIME_MS=180_000L;
-    private static final long DEBRIEF_RESPONSE_TIMEOUT_MS=45_000L;
+    private static final long MAX_CLOSE_RUNTIME_MS=360_000L;
+    private static final long DEBRIEF_IDLE_TIMEOUT_MS=180_000L;
+    private static final long DEBRIEF_SLOW_NOTICE_MS=15_000L;
     private static final int TRANSCRIPT_STABLE_OBSERVATIONS=4;
 
     private static AleyonAccessibilityService instance;
@@ -102,7 +105,10 @@ public final class AleyonAccessibilityService extends AccessibilityService
 
     @Override public void onCloseRequested(){
         Runner r=runner;
-        if(r!=null&&!r.finished){r.beginClose();return;}
+        if(r!=null&&!r.finished){
+            if(r.isClosing())return;
+            r.beginClose();return;
+        }
         ProfileSpec p=activeOverlayProfile();
         if(p!=null)startRunner(Mode.CLOSE,p,journal.activeSessionMode(p.id));
     }
@@ -126,7 +132,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
             case CHAT_ACTIVE -> "En chat";
             case CLOSING_SESSION -> "Cerrando";
             case WAITING_TRANSCRIPT, COMMITTING -> "Guardando";
-            case ANALYZING -> "Resumiendo";
+            case ANALYZING -> "Esperando resumen";
             case ERROR, AMBIGUOUS_USER_REQUIRED, USER_ACTION_REQUIRED -> "Requiere atención";
             case APP_UPDATE_REQUIRED -> "Compatibilidad";
         };
@@ -168,7 +174,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         }
         handler.postDelayed(()->{
             JSONObject report=new JSONObject();
-            try{report.put("schema","aleyon-gemini-passive-probe-v9").put("version","0.5.0-alpha4")
+            try{report.put("schema","aleyon-gemini-passive-probe-v9").put("version","0.5.0-alpha5")
                     .put("probeId",probeId).put("readOnly",true).put("sampleCount",samples.length()).put("samples",samples);}catch(Exception ignored){}
             getSharedPreferences("aleyon_probe",MODE_PRIVATE).edit().putString("last_probe",report.toString())
                     .putLong("last_probe_ts",System.currentTimeMillis()).putString("last_probe_id",probeId).apply();
@@ -218,7 +224,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
             case START_LIVE -> "Preparando Live…";
             case START_CHAT -> "Preparando chat…";
             case WAIT -> "Sesión activa";
-            case CLOSE -> "Guardando sesión…";
+            case CLOSE -> "Cerrando y guardando…";
         };
     }
 
@@ -303,14 +309,17 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private boolean contextInitialized,contextWriteIssued,contextWriteVerified,contextSubmitPending,liveStartPending;
         private int contextSubmitAttempts,contextMissingPasses;
         private String contextPayload="";
+        private int liveExploreStalls,liveExploreMoves;
+        private boolean liveExploreForwardExhausted;
         private boolean endLivePending,closeLaunchIssued;
         private boolean debriefInitialized,debriefWriteIssued,debriefWriteVerified,debriefSubmitPending;
         private int debriefSubmitAttempts,debriefMissingPasses;
-        private String debriefPayload="",debriefResponseBaselineText="";
+        private String debriefPayload="",debriefResponseBaselineText="",debriefLastObservedText="";
         private String stableTranscriptSnapshot="";
         private int stableTranscriptObservations;
+        private boolean debriefSlowNoticeShown;
         private final long runnerStartedAtMs=System.currentTimeMillis();
-        private long closeStartedAtMs,debriefWaitStartedAtMs;
+        private long closeStartedAtMs,debriefWaitStartedAtMs,debriefLastProgressAtMs;
         private String sessionEvidenceText="", debriefBaselineText="", contextBaselineText="";
         private final Runnable pumpRunnable=this::pump;
 
@@ -323,14 +332,17 @@ public final class AleyonAccessibilityService extends AccessibilityService
         void schedule(long delay){if(finished)return;handler.removeCallbacks(pumpRunnable);handler.postDelayed(pumpRunnable,delay);}
         void abortWithoutCommit(){finished=true;handler.removeCallbacks(pumpRunnable);}
         void beginClose(){
+            if(mode==Mode.CLOSE)return;
             SessionStage current=journal.stage(profile.id);
             if(!isCloseableActiveStage(current)){cancelToReady();return;}
             mode=Mode.CLOSE;closePhase=ClosePhase.INIT;retries=0;
             stableTranscriptSnapshot="";stableTranscriptObservations=0;
-            closeLaunchIssued=false;debriefWaitStartedAtMs=0L;debriefResponseBaselineText="";
+            closeLaunchIssued=false;debriefWaitStartedAtMs=0L;debriefLastProgressAtMs=0L;
+            debriefResponseBaselineText="";debriefLastObservedText="";debriefSlowNoticeShown=false;
             closeStartedAtMs=System.currentTimeMillis();
             if(overlay!=null)overlay.showWorking(profile.label,phaseLabel(Mode.CLOSE));schedule(0);
         }
+        boolean isClosing(){return mode==Mode.CLOSE;}
         private boolean isCloseableActiveStage(SessionStage s){return isCloseableStage(s);}
         private void cancelToReady(){
             finished=true;handler.removeCallbacks(pumpRunnable);
@@ -520,10 +532,10 @@ public final class AleyonAccessibilityService extends AccessibilityService
                 }
                 case WAIT_CONTEXT_READY -> {
                     AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
-                    if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){
+                    if(o.state!=TransportState.NORMAL_CHAT){
                         schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
                     }
-                    if("LIVE".equals(sessionMode)&&!o.liveAvailable){
+                    if("CHAT".equals(sessionMode)&&!o.composerReady){
                         schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
                     }
                     journal.baselineText(profile.id,transport.collectConversationText(r));
@@ -538,8 +550,32 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     }
                     transition(profile,SessionStage.LIVE_STARTING);
                     AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
-                    ArtemisFlashAgent.Action action=artemisStartAgent.nextLive(o);
+                    ArtemisFlashAgent.Action action=artemisStartAgent.nextLive(o,liveExploreForwardExhausted);
                     switch(action){
+                        case SCROLL_FORWARD -> {
+                            if(transport.exploreConversationForward(r)){
+                                artemisStartAgent.actionSucceeded(ArtemisFlashAgent.PHASE_LIVE,o.state,action);
+                                liveExploreStalls=0;liveExploreForwardExhausted=false;
+                                if(++liveExploreMoves>MAX_LIVE_EXPLORE_MOVES){failUpdate("Artemis recorrió la conversación sin encontrar Live.");return;}
+                                schedule(180L);return;
+                            }
+                            artemisStartAgent.actionFailed();
+                            liveExploreStalls++;if(liveExploreStalls>=2)liveExploreForwardExhausted=true;
+                            if(liveExploreStalls>=MAX_LIVE_EXPLORE_STALLS){failUpdate("Artemis agotó la exploración segura sin encontrar Live.");return;}
+                            schedule(RESPONSE_OBSERVE_FALLBACK_MS);
+                        }
+                        case SCROLL_BACKWARD -> {
+                            if(transport.exploreConversationBackward(r)){
+                                artemisStartAgent.actionSucceeded(ArtemisFlashAgent.PHASE_LIVE,o.state,action);
+                                liveExploreStalls=0;liveExploreForwardExhausted=false;
+                                if(++liveExploreMoves>MAX_LIVE_EXPLORE_MOVES){failUpdate("Artemis recorrió la conversación sin encontrar Live.");return;}
+                                schedule(180L);return;
+                            }
+                            artemisStartAgent.actionFailed();
+                            liveExploreStalls++;liveExploreForwardExhausted=false;
+                            if(liveExploreStalls>=MAX_LIVE_EXPLORE_STALLS){failUpdate("Artemis no pudo revelar Live después de explorar el chat.");return;}
+                            schedule(RESPONSE_OBSERVE_FALLBACK_MS);
+                        }
                         case START_LIVE -> {
                             if(transport.startLive(r)){
                                 liveStartPending=true;
@@ -665,8 +701,9 @@ public final class AleyonAccessibilityService extends AccessibilityService
                                     TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.SUBMIT_CONTEXT);
                         }
                         artemisCloseAgent.complete();
-                        debriefResponseBaselineText=now;
-                        debriefWaitStartedAtMs=System.currentTimeMillis();
+                        debriefResponseBaselineText=now;debriefLastObservedText=now;
+                        debriefWaitStartedAtMs=System.currentTimeMillis();debriefLastProgressAtMs=debriefWaitStartedAtMs;
+                        debriefSlowNoticeShown=false;
                         if(overlay!=null)overlay.showWorking(profile.label,"Esperando resumen de Gemini…");
                         moveClose(ClosePhase.WAIT_DEBRIEF);return;
                     }
@@ -701,12 +738,21 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     }
                 }
                 case WAIT_DEBRIEF -> {
-                    String all=transport.collectConversationText(root());
+                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
+                    if(o.state!=TransportState.NORMAL_CHAT){schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;}
+                    String all=transport.collectConversationText(r);long nowMs=System.currentTimeMillis();
+                    long waited=debriefWaitStartedAtMs<=0L?0L:nowMs-debriefWaitStartedAtMs;
+                    if(!all.equals(debriefLastObservedText)){
+                        debriefLastObservedText=all;debriefLastProgressAtMs=nowMs;
+                        if(waited>=DEBRIEF_SLOW_NOTICE_MS&&overlay!=null)overlay.showWorking(profile.label,"Recibiendo resumen de Gemini…");
+                    }else if(debriefLastProgressAtMs==0L)debriefLastProgressAtMs=nowMs;
                     String debriefDelta=SessionTextDelta.delta(debriefResponseBaselineText,all);
                     SessionReportParser.Report report=SessionReportParser.parseDebrief(debriefDelta);
                     if(report==null){
-                        long waited=debriefWaitStartedAtMs<=0L?0L:System.currentTimeMillis()-debriefWaitStartedAtMs;
-                        if(waited>=DEBRIEF_RESPONSE_TIMEOUT_MS){commitTranscriptFallback();return;}
+                        if(waited>=DEBRIEF_SLOW_NOTICE_MS&&!debriefSlowNoticeShown){
+                            debriefSlowNoticeShown=true;if(overlay!=null)overlay.showWorking(profile.label,"Gemini tarda; sigo esperando…");
+                        }
+                        if(nowMs-debriefLastProgressAtMs>=DEBRIEF_IDLE_TIMEOUT_MS){commitTranscriptFallback();return;}
                         schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
                     }
                     commitCloseReport(report);

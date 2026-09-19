@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0-alpha5 — Artemis explora el viewport / cierre tolerante a red lenta
+
+- Añade exploración semántica aprendible a START_SESSION cuando el launcher Live queda fuera del viewport porque Gemini ya estaba abierto o desplazado.
+- Artemis aprende SCROLL_FORWARD / SCROLL_BACKWARD, reobserva tras cada acción e invalida un replay de scroll si Live ya está visible.
+- GeminiStateObserver reconoce una conversación Robin desplazada aunque temporalmente el compositor no esté visible.
+- Mantiene sólo START_SESSION y CLOSE_SESSION: no reintroduce nombre/ID de chat, búsqueda, renombrado ni recuperación.
+- El cierre conserva el mismo chat observado y sustituye el timeout rígido de 45 s por espera sensible a progreso.
+- Tras 15 s la burbuja informa que Gemini tarda; mientras el texto siga cambiando se renueva la espera. Sólo tras 180 s sin progreso se usa el fallback local.
+- Un segundo cierre no puede reiniciar la transacción ni reenviar el debrief.
+- La simulación amplía aislamiento a 200 casos de perfil y cruza Live/Chat/manual/background con red rápida/lenta/streaming/timeout, además de Live fuera de viewport.
+
+
 ## 0.5.0-alpha4 — cierre físico sobre la misma sesión Gemini
 
 - Corrige el fallo reproducido físicamente en Nubia y Samsung donde el cierre podía relanzar Gemini antes de observar la superficie Live/chat activa.

@@ -35,7 +35,12 @@ check('removeNativeLocalProfile' in html and 'deleteProfileEverywhere' not in ht
 check('AutomationRequest.Type.START_LIVE_SESSION' in main,'Live request not emitted natively')
 check('AutomationRequest.Type.START_CHAT_SESSION' in main,'Chat request not emitted natively')
 check('artemisStartAgent.nextLive' in service and 'transport.startLive(r)' in service,'Live request is not governed through Artemis + narrow transport capability')
-check('GeminiStateObserver.observe' in service and 'o.liveAvailable' in service and 'journal.baselineText' in service,'Context settle/capability verifier missing')
+check('GeminiStateObserver.observe' in service and 'journal.baselineText' in service,'Context settle verifier missing')
+check('artemisStartAgent.nextLive(o,liveExploreForwardExhausted)' in service
+      and 'exploreConversationForward' in service and 'exploreConversationBackward' in service,
+      'Off-screen Live exploration missing')
+check('DEBRIEF_IDLE_TIMEOUT_MS' in service and 'debriefLastProgressAtMs' in service,
+      'Slow-network debrief progress handling missing')
 check('SessionReportParser.parse' in service,'Close report verifier missing')
 check('learning.commitVerified' in service,'Local commit verification missing')
 check('NotificationHelper.postSessionClosed' in service,'Close notification missing')

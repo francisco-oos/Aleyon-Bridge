@@ -40,6 +40,8 @@ public final class ArtemisFlashAgent {
         WRITE_CONTEXT,
         SUBMIT_CONTEXT,
         START_LIVE,
+        SCROLL_FORWARD,
+        SCROLL_BACKWARD,
         END_LIVE,
         COMPLETE_FRESH_CHAT,
         COMPLETE_CONTEXT,
@@ -104,16 +106,34 @@ public final class ArtemisFlashAgent {
     }
 
     /** Start Live only after the context message has been delivered. */
-    public Action nextLive(TransportObservation o){
+    public Action nextLive(TransportObservation o){return nextLive(o,false);}
+
+    public Action nextLive(TransportObservation o,boolean preferBackwardExplore){
         if(o==null)return Action.FAIL_CLOSED;
-        if(o.state==TransportState.LIVE_ACTIVE)
-            return replayOr(PHASE_LIVE,o.state,Action.COMPLETE_LIVE);
+        if(o.state==TransportState.LIVE_ACTIVE)return replayLiveOr(o,Action.COMPLETE_LIVE);
         Action fallback=switch(o.state){
             case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
-            case NORMAL_CHAT -> o.liveAvailable?Action.START_LIVE:Action.WAIT;
+            case NORMAL_CHAT -> o.liveAvailable?Action.START_LIVE:
+                    (preferBackwardExplore?Action.SCROLL_BACKWARD:Action.SCROLL_FORWARD);
             default -> Action.FAIL_CLOSED;
         };
-        return replayOr(PHASE_LIVE,o.state,fallback);
+        return replayLiveOr(o,fallback);
+    }
+
+    private Action replayLiveOr(TransportObservation o,Action fallback){
+        if(replaying&&replayIndex<replay.steps.size()){
+            ArtemisRoutineMemory.Step s=replay.steps.get(replayIndex);
+            if(s.phase.equals(PHASE_LIVE)&&s.state==o.state){
+                try{
+                    Action remembered=Action.valueOf(s.action);
+                    boolean scroll=remembered==Action.SCROLL_FORWARD||remembered==Action.SCROLL_BACKWARD;
+                    if((o.liveAvailable&&scroll)||(!o.liveAvailable&&remembered==Action.START_LIVE)){invalidateReplay();return fallback;}
+                    return remembered;
+                }catch(Exception ignored){}
+            }
+            invalidateReplay();
+        }
+        return fallback;
     }
 
     /** End Live reactively and verify the return to the same normal chat. */
@@ -172,6 +192,8 @@ public final class ArtemisFlashAgent {
                 ||a==Action.WRITE_CONTEXT
                 ||a==Action.SUBMIT_CONTEXT
                 ||a==Action.START_LIVE
+                ||a==Action.SCROLL_FORWARD
+                ||a==Action.SCROLL_BACKWARD
                 ||a==Action.END_LIVE;
     }
 }

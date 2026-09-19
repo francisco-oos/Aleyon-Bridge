@@ -86,6 +86,10 @@ check('FOCUS_INPUT' in artemis_root and 'FOCUS_ACCESSIBILITY' in artemis_root,'A
 check('SystemClock.sleep' not in artemis_root and 'RETRY_BACKOFF_MS' not in artemis_root,'Blocking programmed waits returned to Artemis root resolution')
 check('MAX_START_RUNTIME_MS' in service and 'MAX_CLOSE_RUNTIME_MS' in service,'Anti-freeze transport watchdog missing')
 check('artemisStartAgent.nextContext' in service and 'artemisStartAgent.nextLive' in service,'Artemis does not govern start-session transport end-to-end')
+check('SCROLL_FORWARD' in artemis_flash and 'SCROLL_BACKWARD' in artemis_flash,'Artemis cannot learn viewport exploration')
+check('replayLiveOr' in artemis_flash and 'o.liveAvailable&&scroll' in artemis_flash,'Learned Live exploration is not guarded by current capability evidence')
+check('exploreConversationForward' in service and 'exploreConversationBackward' in service,'START_SESSION cannot explore a scrolled Gemini conversation')
+check('hasConversationViewport' in ui and 'normal-chat-scrolled' in read('app/src/main/java/com/aleyon/geminibridge/transport/GeminiStateObserver.java'),'Scrolled Gemini chat is not observable as a normal conversation')
 check('transport.writeContext' in service and 'transport.submitPreparedContext' in service,'Verified two-phase context delivery missing')
 check('contextSubmitAttempts>=3' in service,'Context submit must fail/relearn quickly instead of burning the generic 32-retry budget')
 check('transport.sendContext(' not in service,'Legacy monolithic context sender returned')
@@ -102,7 +106,9 @@ check('transport.createNormalConversation' not in close_flow,'Close flow must ne
 check('launchGemini();moveClose(ClosePhase.END_LIVE);' not in close_flow,'Close flow still blindly relaunches Gemini')
 check('if(transport.isGeminiSurface(r))' in close_flow and 'if(!closeLaunchIssued){closeLaunchIssued=true;launchGemini();}' in close_flow,'Close flow does not preserve current Gemini surface before relaunching')
 check('if("CHAT".equals(sessionMode) && o.state==TransportState.NORMAL_CHAT)' not in close_flow and 'if(o.state==TransportState.NORMAL_CHAT)' in close_flow,'Close still trusts stale mode instead of observed Live/Chat state')
-check('DEBRIEF_RESPONSE_TIMEOUT_MS' in service and 'commitTranscriptFallback' in close_flow and 'DEBRIEF_TIMEOUT' in close_flow,'Missing bounded debrief no-response fallback')
+check('DEBRIEF_IDLE_TIMEOUT_MS=180_000L' in service and 'debriefLastProgressAtMs' in close_flow and 'commitTranscriptFallback' in close_flow and 'DEBRIEF_TIMEOUT' in close_flow,'Missing progress-sensitive debrief fallback')
+check('DEBRIEF_RESPONSE_TIMEOUT_MS' not in service,'Old fixed 45-second debrief timeout returned')
+check('if(r.isClosing())return;' in service and 'if(mode==Mode.CLOSE)return;' in service,'Repeated close can restart an in-flight close')
 check(close_flow.index('artemisCloseAgent.complete()') < close_flow.index('moveClose(ClosePhase.WAIT_DEBRIEF)'),'Artemis close routine is not saved before waiting for Gemini cognition')
 check('Finalizar Live y guardar' in overlay and 'Guardar y cerrar sesión' in overlay and 'Cierre en curso…' in overlay,'Bubble close controls are not state-aware')
 check('transport.sendContext(' not in service,'Legacy monolithic message sender still used by runtime')
@@ -132,8 +138,8 @@ check('android.permission.RECORD_AUDIO' not in manifest,'Bridge must not request
 check('android.permission.INTERNET' not in manifest,'Bridge unexpectedly requests INTERNET')
 check('SYSTEM_ALERT_WINDOW' not in manifest,'Broad overlay permission introduced')
 check('POST_NOTIFICATIONS' in manifest and 'NotificationHelper.postSessionClosed' in service,'Session close notification regression')
-check('versionCode 26' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
-check(version=='0.5.0-alpha4','VERSION file mismatch')
+check('versionCode 27' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
+check(version=='0.5.0-alpha5','VERSION file mismatch')
 
 # No obsolete prompt pipeline or upgrade-only command aliases
 prompt_dir=ROOT/'app/src/main/assets/prompts'

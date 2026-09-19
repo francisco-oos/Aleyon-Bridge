@@ -204,3 +204,13 @@ Do not promote alpha3 to the stable baseline until:
 - the multi-device subset passes on a second device;
 - GitHub **Aleyon Bridge QA** is green;
 - GitHub **Build Android APK** is green.
+
+
+## 0.5.0-alpha5 — Live fuera del viewport y red lenta (2026-09-18)
+
+- Dejar Gemini abierto en una conversación y desplazarla hasta que el control Live no esté visible. Desde Aleyon pulsar Iniciar Live sin tocar Gemini: Artemis debe explorar, reobservar y revelar/usar Live por sí mismo.
+- Repetir con Live ya visible para comprobar que una rutina aprendida de scroll no obliga a desplazarse innecesariamente.
+- Probar cierre desde Live, desde Chat y después de terminar Live manualmente. Ningún cierre puede crear otro chat ni buscar historial.
+- Durante Esperando resumen, simular conexión lenta: no reenviar el prompt, mantener el mismo SESSION_ID local y aceptar una respuesta tardía si sigue habiendo progreso.
+- Verificar el aviso Gemini tarda; sigo esperando… y que el fallback sólo ocurra tras un periodo prolongado sin progreso.
+- Repetir en Nubia y Samsung antes de promoción.
