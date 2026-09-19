@@ -48,14 +48,15 @@ public final class AleyonAccessibilityService extends AccessibilityService
     private static final int MAX_UI_RETRIES=8;
     private static final int MAX_LIVE_EXPLORE_STALLS=6;
     private static final int MAX_LIVE_EXPLORE_MOVES=16;
+    private static final int ARTEMIS_POLICY_VERSION=4;
     private static final long MAX_START_RUNTIME_MS=180_000L;
     private static final long MAX_CLOSE_RUNTIME_MS=360_000L;
     private static final long DEBRIEF_IDLE_TIMEOUT_MS=180_000L;
     private static final long DEBRIEF_SLOW_NOTICE_MS=15_000L;
-    private static final long POST_LIVE_SETTLE_MIN_MS=4_000L;
+    private static final long POST_LIVE_QUIET_MS=6_000L;
     private static final long DEBRIEF_RESPOND_NOW_AFTER_MS=8_000L;
-    private static final long DEBRIEF_NUDGE_AFTER_MS=20_000L;
-    private static final int TRANSCRIPT_STABLE_OBSERVATIONS=4;
+    private static final long DEBRIEF_SILENT_RETRY_MS=30_000L;
+    private static final long DEBRIEF_INVALID_RESPONSE_QUIET_MS=4_000L;
 
     private static AleyonAccessibilityService instance;
     private final Handler handler=new Handler(Looper.getMainLooper());
@@ -177,7 +178,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         }
         handler.postDelayed(()->{
             JSONObject report=new JSONObject();
-            try{report.put("schema","aleyon-gemini-passive-probe-v9").put("version","0.5.0-alpha7")
+            try{report.put("schema","aleyon-gemini-passive-probe-v10").put("version","0.5.0-alpha8")
                     .put("probeId",probeId).put("readOnly",true).put("sampleCount",samples.length()).put("samples",samples);}catch(Exception ignored){}
             getSharedPreferences("aleyon_probe",MODE_PRIVATE).edit().putString("last_probe",report.toString())
                     .putLong("last_probe_ts",System.currentTimeMillis()).putString("last_probe_id",probeId).apply();
@@ -267,8 +268,8 @@ public final class AleyonAccessibilityService extends AccessibilityService
     }
     private static String sourceFor(AccessibilityNodeInfo node,String base){return GEMINI_HOST_PACKAGE.equals(packageName(node))?base+":google-host":base+":gemini-app";}
     private String artemisRoutineKey(String capability){
-        return capability+"|"+packageVersion(GEMINI_PACKAGE)+"|"
-                +packageVersion(GEMINI_HOST_PACKAGE);
+        return "policy-"+ARTEMIS_POLICY_VERSION+"|"+capability+"|"
+                +packageVersion(GEMINI_PACKAGE)+"|"+packageVersion(GEMINI_HOST_PACKAGE);
     }
     private long packageVersion(String pkg){
         try{
@@ -319,10 +320,12 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private int debriefSubmitAttempts,debriefMissingPasses;
         private String debriefPayload="",debriefResponseBaselineText="",debriefLastObservedText="";
         private String stableTranscriptSnapshot="",debriefConversationAnchor="";
-        private int stableTranscriptObservations;
+        private long stableTranscriptSinceMs;
         private boolean debriefSlowNoticeShown,conversationDriftNotified;
-        private boolean debriefRespondNowIssued,debriefNudgeWriteIssued,debriefNudgeIssued;
-        private int debriefNudgeWriteAttempts,debriefNudgeSubmitAttempts;
+        private boolean debriefRespondNowIssued,debriefRetryWriteIssued,debriefRetryIssued;
+        private boolean debriefRetrySubmitPending;
+        private int debriefRetryWriteAttempts,debriefRetrySubmitAttempts;
+        private String debriefRetryPayload="";
         private final long runnerStartedAtMs=System.currentTimeMillis();
         private long closeStartedAtMs,debriefWaitStartedAtMs,debriefLastProgressAtMs,postLiveChatObservedAtMs;
         private String sessionEvidenceText="", debriefBaselineText="", contextBaselineText="";
@@ -341,12 +344,12 @@ public final class AleyonAccessibilityService extends AccessibilityService
             SessionStage current=journal.stage(profile.id);
             if(!isCloseableActiveStage(current)){cancelToReady();return;}
             mode=Mode.CLOSE;closePhase=ClosePhase.INIT;retries=0;
-            stableTranscriptSnapshot="";stableTranscriptObservations=0;
+            stableTranscriptSnapshot="";stableTranscriptSinceMs=0L;
             closeLaunchIssued=false;debriefWaitStartedAtMs=0L;debriefLastProgressAtMs=0L;
             debriefResponseBaselineText="";debriefLastObservedText="";debriefSlowNoticeShown=false;
-            debriefRespondNowIssued=false;debriefNudgeWriteIssued=false;debriefNudgeIssued=false;
-            debriefNudgeWriteAttempts=0;debriefNudgeSubmitAttempts=0;
-            postLiveChatObservedAtMs=0L;
+            debriefRespondNowIssued=false;debriefRetryWriteIssued=false;debriefRetryIssued=false;
+            debriefRetrySubmitPending=false;debriefRetryWriteAttempts=0;debriefRetrySubmitAttempts=0;
+            debriefRetryPayload="";postLiveChatObservedAtMs=0L;
             closeStartedAtMs=System.currentTimeMillis();
             if(overlay!=null)overlay.showWorking(profile.label,phaseLabel(Mode.CLOSE));schedule(0);
         }
@@ -475,7 +478,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     boolean prepared=transport.isContextPrepared(r,contextPayload);
                     String nowText=transport.collectConversationText(r);
                     boolean delivered=contextWriteIssued&&!prepared
-                            && SessionTextDelta.delta(contextBaselineText,nowText).trim().length()>=20;
+                            && transport.hasPostedUserMessage(r,contextPayload);
 
                     if(prepared&&contextWriteIssued&&!contextWriteVerified){
                         artemisStartAgent.actionSucceeded(ArtemisFlashAgent.PHASE_CONTEXT,
@@ -682,13 +685,15 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     String current=transport.collectConversationText(r);
                     long nowMs=System.currentTimeMillis();
                     if(postLiveChatObservedAtMs==0L)postLiveChatObservedAtMs=nowMs;
-                    if(current.equals(stableTranscriptSnapshot))stableTranscriptObservations++;
-                    else {stableTranscriptSnapshot=current;stableTranscriptObservations=0;}
-                    boolean settledLongEnough=nowMs-postLiveChatObservedAtMs>=POST_LIVE_SETTLE_MIN_MS;
-                    if(stableTranscriptObservations<TRANSCRIPT_STABLE_OBSERVATIONS
-                            ||!settledLongEnough||transport.responseInProgress(r)){
-                        transport.scrollConversation(r);schedule(OBSERVE_FALLBACK_MS);return;
+                    if(!current.equals(stableTranscriptSnapshot)){
+                        stableTranscriptSnapshot=current;stableTranscriptSinceMs=nowMs;
+                    }else if(stableTranscriptSinceMs==0L)stableTranscriptSinceMs=nowMs;
+                    if(transport.responseInProgress(r)){
+                        stableTranscriptSinceMs=nowMs;
+                        schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
                     }
+                    boolean quietLongEnough=nowMs-stableTranscriptSinceMs>=POST_LIVE_QUIET_MS;
+                    if(!quietLongEnough){schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;}
                     sessionEvidenceText=SessionTextDelta.delta(journal.baselineText(profile.id),current);
                     if(sessionEvidenceText.trim().length()<20){finishReady();return;}
                     debriefConversationAnchor=sessionEvidenceText;
@@ -721,7 +726,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     boolean prepared=transport.isContextPrepared(r,debriefPayload);
                     String now=transport.collectConversationText(r);
                     boolean delivered=debriefWriteIssued&&!prepared
-                            && SessionTextDelta.delta(debriefBaselineText,now).trim().length()>=10;
+                            && transport.hasPostedUserMessage(r,debriefPayload);
                     if(prepared&&debriefWriteIssued&&!debriefWriteVerified){
                         artemisCloseAgent.actionSucceeded(ArtemisFlashAgent.PHASE_DEBRIEF,
                                 TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.WRITE_CONTEXT);
@@ -805,28 +810,48 @@ public final class AleyonAccessibilityService extends AccessibilityService
                         }
 
                         long quietFor=nowMs-debriefLastProgressAtMs;
-                        if(!inProgress&&!debriefNudgeIssued&&waited>=DEBRIEF_NUDGE_AFTER_MS
-                                &&quietFor>=DEBRIEF_NUDGE_AFTER_MS&&o.composerReady){
-                            String nudge=prompts.sessionDebriefNudge();
-                            if(!debriefNudgeWriteIssued){
-                                debriefNudgeWriteAttempts++;
-                                if(transport.writeContext(r,nudge)){
-                                    debriefNudgeWriteIssued=true;
+                        String invalidDelta=debriefDelta==null?"":debriefDelta.trim();
+                        boolean invalidResponseSettled=invalidDelta.length()>=80
+                                &&quietFor>=DEBRIEF_INVALID_RESPONSE_QUIET_MS;
+                        boolean silentTooLong=invalidDelta.isEmpty()
+                                &&waited>=DEBRIEF_SILENT_RETRY_MS
+                                &&quietFor>=DEBRIEF_SILENT_RETRY_MS;
+
+                        if(!inProgress&&!debriefRetryIssued&&o.composerReady
+                                &&(invalidResponseSettled||silentTooLong)){
+                            if(debriefRetryPayload.isEmpty())
+                                debriefRetryPayload=prompts.sessionDebriefRetry(profile,sessionEvidenceText);
+
+                            if(transport.hasPostedUserMessage(r,debriefRetryPayload)){
+                                debriefRetryIssued=true;debriefRetrySubmitPending=false;
+                                debriefResponseBaselineText=all;debriefLastObservedText=all;
+                                debriefWaitStartedAtMs=nowMs;debriefLastProgressAtMs=nowMs;
+                                debriefSlowNoticeShown=false;debriefRespondNowIssued=false;
+                                if(overlay!=null)overlay.showWorking(profile.label,"Esperando el cierre corregido…");
+                                schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
+                            }
+
+                            boolean retryPrepared=transport.isContextPrepared(r,debriefRetryPayload);
+                            if(!debriefRetryWriteIssued&&!retryPrepared){
+                                debriefRetryWriteAttempts++;
+                                if(transport.writeContext(r,debriefRetryPayload)){
+                                    debriefRetryWriteIssued=true;
                                     if(overlay!=null)overlay.showWorking(profile.label,"Reintentando el cierre una vez…");
-                                }else if(debriefNudgeWriteAttempts>=3){
-                                    debriefNudgeIssued=true;
+                                }else if(debriefRetryWriteAttempts>=3){
+                                    debriefRetryIssued=true;
                                 }
                                 schedule(OBSERVE_FALLBACK_MS);return;
                             }
-                            if(transport.isContextPrepared(r,nudge)){
-                                debriefNudgeSubmitAttempts++;
+                            if(retryPrepared){
+                                debriefRetrySubmitAttempts++;
                                 if(transport.submitPreparedContext(r)){
-                                    debriefNudgeIssued=true;debriefLastProgressAtMs=nowMs;
-                                }else if(debriefNudgeSubmitAttempts>=3){
-                                    debriefNudgeIssued=true;transport.clearComposer(r);
+                                    debriefRetrySubmitPending=true;
+                                }else if(debriefRetrySubmitAttempts>=3){
+                                    debriefRetryIssued=true;transport.clearComposer(r);
                                 }
                                 schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
                             }
+                            schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
                         }
 
                         if(waited>=DEBRIEF_SLOW_NOTICE_MS&&!debriefSlowNoticeShown){

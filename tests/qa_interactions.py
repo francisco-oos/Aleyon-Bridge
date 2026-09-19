@@ -44,12 +44,14 @@ check('transport.responseInProgress(r)' in service
       'START_SESSION does not separate Gemini generating from off-screen Live')
 check('DEBRIEF_IDLE_TIMEOUT_MS' in service and 'debriefLastProgressAtMs' in service,
       'Slow-network debrief progress handling missing')
-check('POST_LIVE_SETTLE_MIN_MS' in service and 'postLiveChatObservedAtMs' in service,
-      'Post-Live settle gate missing')
+check('POST_LIVE_QUIET_MS' in service and 'stableTranscriptSinceMs' in service,
+      'Post-Live quiet-state gate missing')
 check('transport.hasRespondNow(r)' in service and 'transport.respondNow(r)' in service,
       'Gemini thinking recovery missing')
-check('sessionDebriefNudge' in service and 'debriefNudgeIssued' in service,
-      'One-shot stalled-debrief recovery missing')
+check('sessionDebriefRetry' in service and 'debriefRetryIssued' in service,
+      'One-shot self-contained debrief retry missing')
+check(service.count('transport.hasPostedUserMessage')>=2,
+      'Message delivery can still be inferred from unrelated conversation text')
 check('SessionReportParser.parse' in service,'Close report verifier missing')
 check('learning.commitVerified' in service,'Local commit verification missing')
 check('NotificationHelper.postSessionClosed' in service,'Close notification missing')

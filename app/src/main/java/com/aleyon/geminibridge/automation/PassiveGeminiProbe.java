@@ -107,6 +107,7 @@ public final class PassiveGeminiProbe {
             out.put("liveButtonDetected", GeminiUi.hasVisibleGeminiLiveLauncher(root));
             out.put("liveButtonEvidence", GeminiUi.liveLauncherEvidence(root));
             out.put("composerRightActionCount", GeminiUi.visibleComposerRightActionCount(root));
+            out.put("responseInProgress", GeminiUi.isResponseInProgress(root));
             out.put("editableNodeCount", countEditable(root));
             if (includeNodes) {
                 JSONArray nodes = dumpNodes(root);

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0-alpha8 — cierre por evidencia / menos comportamiento robótico
+
+- Revisión basada en diez grabaciones físicas Nubia/Samsung.
+- El modo imagen y la conversación multimodal quedan intactos: la generación de imagen funcionó dentro de la sesión y no requiere una ruta especial de Bridge.
+- Corrige una condición crítica: contexto y debrief ya no se consideran enviados porque “cambió suficiente texto” en Gemini. Bridge exige encontrar el payload dentro de un contenedor real de mensaje del usuario.
+- El slot derecho reutilizado por Gemini (Live / Enviar / Stop) ya no puede pulsarse como Enviar mientras exista evidencia de respuesta activa.
+- El detector global deja de interpretar una palabra del alumno como `Stop`/`Detener` como si fuera un control del sistema.
+- Artemis invalida rutas antiguas mediante `ARTEMIS_POLICY_VERSION=4`; perfiles y memoria pedagógica no se borran.
+- Tras Live, el transcript se observa hasta acumular una ventana real de quietud de 6 s; se elimina el scroll automático durante estabilización.
+- Se elimina el ambiguo `Responde ahora al mensaje anterior`, que en videos reactivó preguntas pendientes de Live o produjo respuestas genéricas.
+- Si el primer debrief no genera respuesta o genera una respuesta inválida, Bridge espera que Gemini quede ocioso y repite una sola vez el contrato completo; el retry incluye evidencia acotada de la práctica.
+- `Responder ahora` sigue siendo una capacidad opcional cuando Gemini la expone durante razonamiento prolongado.
+- El instalador USB limpia una selección Android de `Wait for debugger`, condición observada en una prueba Samsung.
+
+
 ## 0.5.0-alpha7 — convergencia física entre teléfonos / cierre recuperable
 
 - Separa dos fallos de campo que no son el mismo problema: un intento donde Artemis agotó la exploración de Live aunque el control terminó visible, y el Samsung donde Live sí conversó correctamente pero el debrief quedó enviado sin que Gemini generara respuesta.

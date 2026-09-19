@@ -32,6 +32,10 @@ public final class GeminiConversationTransport {
         return GeminiUi.clickSendAction(root);
     }
 
+    public boolean hasPostedUserMessage(AccessibilityNodeInfo root,String payload){
+        return GeminiUi.hasPostedUserMessage(root,payload);
+    }
+
     public boolean startLive(AccessibilityNodeInfo root){
         return GeminiUi.clickGeminiLive(root);
     }

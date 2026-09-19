@@ -87,8 +87,16 @@ check('SystemClock.sleep' not in artemis_root and 'RETRY_BACKOFF_MS' not in arte
 check('MAX_START_RUNTIME_MS' in service and 'MAX_CLOSE_RUNTIME_MS' in service,'Anti-freeze transport watchdog missing')
 check('artemisStartAgent.nextContext' in service and 'artemisStartAgent.nextLive' in service,'Artemis does not govern start-session transport end-to-end')
 check('SCROLL_FORWARD' in artemis_flash and 'SCROLL_BACKWARD' in artemis_flash,'Artemis cannot learn viewport exploration')
+check('ARTEMIS_POLICY_VERSION=4' in service and '"policy-"+ARTEMIS_POLICY_VERSION' in service,'Artemis learned routines are not namespaced by transport policy')
+check('hasPostedUserMessage' in ui and service.count('transport.hasPostedUserMessage')>=2,'Context/debrief delivery still relies on generic text deltas')
+check('sessionDebriefNudge' not in prompt and 'Responde ahora al mensaje anterior' not in prompt,'Ambiguous previous-message nudge returned')
+check('sessionDebriefRetry' in prompt and 'Segundo intento de cierre' in prompt,'Self-contained debrief retry missing')
 check('isShowingHintText' in ui and 'structuralLiveCandidate' in ui,'Live structural fallback treats placeholder text as typed content')
 check('isResponseInProgress' in ui and 'hasRespondNow' in ui and 'clickRespondNow' in ui,'Gemini response-progress recovery capability missing')
+response_block=ui[ui.find('public static boolean isResponseInProgress'):ui.find('public static boolean hasRespondNow')]
+check('"Stop")' not in response_block and '"Detener")' not in response_block,'Generic learner utterance can still masquerade as response-progress control')
+send_block=ui[ui.find('public static boolean clickSendAction'):ui.find('private static AccessibilityNodeInfo rightmostSendCandidate')]
+check('isResponseInProgress(root)' in send_block,'Reused Gemini action slot can still be clicked as Send while a response is active')
 check('replayLiveOr' in artemis_flash and 'o.liveAvailable&&scroll' in artemis_flash,'Learned Live exploration is not guarded by current capability evidence')
 check('exploreConversationForward' in service and 'exploreConversationBackward' in service,'START_SESSION cannot explore a scrolled Gemini conversation')
 check('hasConversationViewport' in ui and 'normal-chat-scrolled' in read('app/src/main/java/com/aleyon/geminibridge/transport/GeminiStateObserver.java'),'Scrolled Gemini chat is not observable as a normal conversation')
@@ -109,10 +117,11 @@ check('launchGemini();moveClose(ClosePhase.END_LIVE);' not in close_flow,'Close 
 check('if(transport.isGeminiSurface(r))' in close_flow and 'if(!closeLaunchIssued){closeLaunchIssued=true;launchGemini();}' in close_flow,'Close flow does not preserve current Gemini surface before relaunching')
 check('if("CHAT".equals(sessionMode) && o.state==TransportState.NORMAL_CHAT)' not in close_flow and 'if(o.state==TransportState.NORMAL_CHAT)' in close_flow,'Close still trusts stale mode instead of observed Live/Chat state')
 check('DEBRIEF_IDLE_TIMEOUT_MS=180_000L' in service and 'debriefLastProgressAtMs' in close_flow and 'commitTranscriptFallback' in close_flow and 'DEBRIEF_TIMEOUT' in close_flow,'Missing progress-sensitive debrief fallback')
-check('POST_LIVE_SETTLE_MIN_MS=4_000L' in service and 'postLiveChatObservedAtMs' in close_flow,'Close can race Gemini immediately after Live exits')
+check('POST_LIVE_QUIET_MS=6_000L' in service and 'stableTranscriptSinceMs' in close_flow,'Post-Live close is not based on a quiet transcript window')
+check('transport.scrollConversation(r)' not in close_flow[close_flow.find('case STABILIZE_TRANSCRIPT'):close_flow.find('case DELIVER_DEBRIEF')],'Transcript stabilization still scrolls Gemini robotically')
 check('DEBRIEF_RESPOND_NOW_AFTER_MS=8_000L' in service and 'transport.respondNow' in close_flow,'Respond-now recovery is not bounded into CLOSE_SESSION')
-check('DEBRIEF_NUDGE_AFTER_MS=20_000L' in service and 'sessionDebriefNudge' in close_flow,'Stalled debrief has no one-shot recovery')
-check('debriefNudgeIssued' in close_flow and '!debriefNudgeIssued' in close_flow,'Debrief recovery can repeat without a one-shot guard')
+check('DEBRIEF_SILENT_RETRY_MS=30_000L' in service and 'DEBRIEF_INVALID_RESPONSE_QUIET_MS=4_000L' in service,'Evidence-driven debrief retry thresholds missing')
+check('debriefRetryIssued' in close_flow and '!debriefRetryIssued' in close_flow,'Debrief retry can repeat without a one-shot guard')
 check('debriefConversationAnchor=sessionEvidenceText' in close_flow,'Close is not bound to current-session evidence')
 check(close_flow.count('SessionTextDelta.containsConversationEvidence')>=3,'Cross-chat contamination guards are incomplete')
 check('Vuelve al chat de esta sesión' in close_flow,'Conversation drift does not surface a safe user action')
@@ -152,8 +161,8 @@ notification=read('app/src/main/java/com/aleyon/geminibridge/automation/Notifica
 check('EXTRA_OPEN_SUMMARY_PROFILE' in notification and 'tapIntent.putExtra' in notification and 'FLAG_ACTIVITY_SINGLE_TOP' in notification,'Notification tap is not bound to a profile summary')
 check('captureSummaryIntent' in main and 'onNewIntent' in main and 'NotificationHelper.EXTRA_OPEN_SUMMARY_PROFILE' in main,'MainActivity does not consume notification summary intents')
 check('openPendingSummary()' in html,'Cold/resumed app cannot open a pending detailed summary')
-check('versionCode 29' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
-check(version=='0.5.0-alpha7','VERSION file mismatch')
+check('versionCode 30' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
+check(version=='0.5.0-alpha8','VERSION file mismatch')
 
 # No obsolete prompt pipeline or upgrade-only command aliases
 prompt_dir=ROOT/'app/src/main/assets/prompts'
@@ -199,3 +208,5 @@ if node:
 if errors:
     print('FAIL static QA');[print(' -',e) for e in errors];sys.exit(1)
 print('PASS static QA')
+
+check('am clear-debug-app' in read('INSTALAR_APK_POR_USB.bat'),'USB installer does not clear stale Android wait-for-debugger selection')

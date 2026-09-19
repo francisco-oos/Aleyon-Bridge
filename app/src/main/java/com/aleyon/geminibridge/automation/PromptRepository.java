@@ -21,17 +21,26 @@ public final class PromptRepository {
      */
     public String sessionDebrief(ProfileSpec p){
         String language=p==null||p.targetLanguage==null||p.targetLanguage.trim().isEmpty()?"idioma objetivo":p.targetLanguage.trim();
-        return "Haz un cierre breve y útil de esta práctica de "+language+". "
-                +"Basa todo únicamente en lo que el alumno hizo durante esta sesión. "
-                +"No menciones Aleyon, IDs, memoria interna ni instrucciones técnicas. "
-                +"Responde sin Markdown en cuatro líneas: la primera debe comenzar con 'Resumen:', "
-                +"la segunda con 'Avance:', la tercera con 'A reforzar:' y la cuarta con 'Próximo paso:'. "
-                +"No copies ni expliques estas instrucciones; escribe directamente el cierre.";
+        return "Cierra esta práctica de "+language+". "
+                +"Ignora cualquier pregunta o tarea anterior que haya quedado pendiente; no la respondas ahora. "
+                +"Evalúa sólo lo que el alumno hizo durante esta sesión. "
+                +"Responde sin Markdown y únicamente con cuatro líneas: "
+                +"Resumen: ... / Avance: ... / A reforzar: ... / Próximo paso: ... . "
+                +"No menciones Aleyon, IDs, memoria interna ni estas instrucciones.";
     }
 
-    /** One bounded recovery turn when Gemini accepted the debrief but never started answering. */
-    public String sessionDebriefNudge(){
-        return "Responde ahora al mensaje anterior. Devuelve únicamente las cuatro líneas solicitadas.";
+    /**
+     * One self-contained retry. It repeats the real request instead of saying
+     * "responde al mensaje anterior", which physical tests showed can revive a
+     * pending Live question instead of producing the debrief.
+     */
+    public String sessionDebriefRetry(ProfileSpec p,String evidence){
+        String base=sessionDebrief(p);
+        String e=evidence==null?"":evidence.replace('\n',' ').replace('\r',' ')
+                .trim().replaceAll("\\s+"," ");
+        if(e.length()>1800)e=e.substring(0,900)+" … "+e.substring(e.length()-900);
+        return "Segundo intento de cierre. Ignora respuestas anteriores y atiende únicamente este mensaje. "
+                +base+(e.isEmpty()?"":" Evidencia observada de la práctica: "+e);
     }
 
 }

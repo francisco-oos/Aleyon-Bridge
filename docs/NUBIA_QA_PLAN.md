@@ -236,3 +236,16 @@ Do not promote alpha3 to the stable baseline until:
 - Mientras Gemini aún está generando la respuesta inicial al contexto, Artemis debe esperar y no gastar el presupuesto de scroll.
 - Cuando Gemini termine y Live realmente quede fuera del viewport, Artemis debe explorar y reobservar.
 - Repetir al menos 5 ciclos por teléfono para comprobar convergencia, no sólo un camino feliz.
+
+
+## 0.5.0-alpha8 — gate final derivado de 10 videos (2026-09-19)
+
+- Confirmar que el contexto aparece como **un solo mensaje del usuario**. Cambios de texto de Gemini no pueden servir como prueba de envío.
+- Decir literalmente `stop` durante Live: esa palabra del alumno no debe confundirse con un control Stop de Gemini.
+- Probar modo imagen durante Live y continuar hablando después; Bridge no debe introducir una ruta especial ni cerrar la sesión.
+- Al terminar Live, no debe haber scroll automático durante `Guardando conversación`; se exige una ventana de quietud del transcript.
+- Si el debrief queda enviado pero Gemini responde una pregunta pendiente de Live, Aleyon debe esperar que esa respuesta termine y repetir **el debrief completo** una sola vez.
+- Si no aparece ninguna respuesta al primer debrief, repetir el contrato completo una sola vez tras silencio prolongado; queda prohibido `Responde ahora al mensaje anterior` como nudge.
+- Verificar que una respuesta genérica como `Sesión finalizada` NO se almacena como evaluación pedagógica si no contiene las cuatro etiquetas requeridas.
+- En Samsung, antes de probar, confirmar que no aparece `Waiting For Debugger`; el instalador USB ejecuta `adb shell am clear-debug-app` tras instalar.
+- Ejecutar cinco cierres Nubia y cinco Samsung, incluyendo Live normal, `stop`, cambio inglés/español e imagen.

@@ -365,6 +365,9 @@ public final class GeminiUi {
         if (editable == null) return false;
         CharSequence current = editable.getText();
         if (current == null || current.toString().trim().isEmpty()) return false;
+        // Never reinterpret Gemini's reused right-hand action slot as Send while
+        // the provider is still processing a previous turn.
+        if (isResponseInProgress(root)) return false;
 
         AccessibilityNodeInfo semantic = findAny(root, "Enviar", "Send", "Enviar mensaje", "Send message");
         if (semantic == null) semantic = findContains(root, "Enviar mensaje", "Send message");
@@ -424,6 +427,51 @@ public final class GeminiUi {
             for (int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo c=n.getChild(i);if(c!=null)q.add(c);}
         }
         return best;
+    }
+
+
+    /**
+     * Strong postcondition for a submitted user message. Unlike a generic text
+     * delta, this only accepts text found inside Gemini's user-message
+     * containers, so an unrelated assistant response cannot masquerade as a
+     * successful send.
+     */
+    public static boolean hasPostedUserMessage(AccessibilityNodeInfo root,String payload) {
+        if (root == null || payload == null || payload.trim().isEmpty()) return false;
+        String wanted = compact(payload);
+        if (wanted.isEmpty()) return false;
+        String head = wanted.substring(0,Math.min(120,wanted.length()));
+        Queue<AccessibilityNodeInfo> q=new ArrayDeque<>();q.add(root);
+        while(!q.isEmpty()){
+            AccessibilityNodeInfo n=q.remove();
+            String id=n.getViewIdResourceName()==null?"":n.getViewIdResourceName();
+            if(id.endsWith("assistant_robin_user_message_container")
+                    ||id.endsWith("assistant_robin_user_message_text_container")){
+                String candidate=compact(collectSubtreeText(n));
+                if(!candidate.isEmpty()&&candidate.contains(head))return true;
+            }
+            for(int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo c=n.getChild(i);if(c!=null)q.add(c);}
+        }
+        return false;
+    }
+
+    private static String collectSubtreeText(AccessibilityNodeInfo root){
+        if(root==null)return "";
+        StringBuilder b=new StringBuilder();
+        Queue<AccessibilityNodeInfo> q=new ArrayDeque<>();q.add(root);
+        while(!q.isEmpty()){
+            AccessibilityNodeInfo n=q.remove();
+            String t=nodeText(n);if(t!=null&&!t.trim().isEmpty())b.append(t).append(' ');
+            CharSequence d=n.getContentDescription();
+            if(d!=null&&!d.toString().trim().isEmpty())b.append(d).append(' ');
+            for(int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo c=n.getChild(i);if(c!=null)q.add(c);}
+        }
+        return b.toString();
+    }
+
+    private static String compact(String s){
+        return s==null?"":s.replace('\r',' ').replace('\n',' ').trim()
+                .replaceAll("\\s+"," ").toLowerCase(Locale.ROOT);
     }
 
     public static boolean clearComposer(AccessibilityNodeInfo root) {
@@ -866,9 +914,11 @@ public final class GeminiUi {
     /** True while Gemini visibly exposes an in-flight response/thinking control. */
     public static boolean isResponseInProgress(AccessibilityNodeInfo root) {
         if (root == null) return false;
+        // Do not match generic "Stop"/"Detener" globally: those words can be
+        // legitimate learner utterances in the transcript.
         if (findAny(root, "Responder ahora", "Respond now",
                 "Detener respuesta", "Stop response", "Stop generating",
-                "Detener", "Stop") != null) return true;
+                "Cancelar respuesta", "Cancel response") != null) return true;
         AccessibilityNodeInfo slot = findByViewIdSuffix(root,
                 "assistant_robin_input_voice_chat_button_compose");
         if (slot != null) {
@@ -902,14 +952,26 @@ public final class GeminiUi {
     /** Human-readable reason used by passive field diagnostics. */
     public static String liveLauncherEvidence(AccessibilityNodeInfo root) {
         if (root == null) return "none";
+        AccessibilityNodeInfo editable = chatComposer(root);
+        if (editable == null) return "none";
+        CharSequence current = editable.getText();
+        boolean empty = current == null || editable.isShowingHintText()
+                || current.toString().trim().isEmpty();
+        if (!empty || isResponseInProgress(root)) return "none";
         AccessibilityNodeInfo compose = findByViewIdSuffix(root,
                 "assistant_robin_input_voice_chat_button_compose");
-        if (compose != null) return "robin-resource";
         if (findAny(root,
                 "Open Gemini Live", "Abrir Gemini Live",
                 "Gemini Live", "Iniciar Live", "Start Live", "Live") != null)
             return "semantic";
-        return structuralLiveCandidate(root) != null ? "structural-dual-action" : "none";
+        AccessibilityNodeInfo structural = structuralLiveCandidate(root);
+        if (compose != null && structural != null) return "robin-resource+structural";
+        // Field-proven Nubia builds sometimes expose only one accessible
+        // right-side control even though the rendered idle control is Live.
+        // The reused resource is accepted only with an empty composer and no
+        // response-in-progress evidence.
+        if (compose != null) return "robin-resource-idle";
+        return structural != null ? "structural-dual-action" : "none";
     }
 
     /** Number of distinct visible action buttons to the right of the composer. */

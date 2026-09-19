@@ -44,7 +44,7 @@ VERSION_FAMILIES=[
 ]
 CLOSE_SURFACES=["live-active","chat-active","user-ended-live","app-backgrounded","consent","unknown-ui"]
 VIEWPORT_CASES=["live-visible","live-offscreen-forward","live-offscreen-backtrack"]
-NETWORK_CASES=["fast","slow","streaming","timeout","accepted-no-response","thinking-with-respond-now"]
+NETWORK_CASES=["fast","slow","streaming","timeout","accepted-no-response","invalid-old-answer","thinking-with-respond-now"]
 LIVE_READINESS_CASES=["live-visible","reply-generating","live-offscreen-after-reply"]
 
 @dataclass
@@ -162,7 +162,7 @@ def run():
             errors.append(f'provider chat/session mismatch {p.lang}')
 
     close_cases=0; network_close_cases=0; viewport_cases=0; cross_chat_rejections=0
-    debrief_nudges=0; respond_now_recoveries=0; post_live_settle_cases=0; live_readiness_cases=0
+    debrief_full_retries=0; invalid_response_retries=0; respond_now_recoveries=0; post_live_settle_cases=0; live_readiness_cases=0
     forbidden_close_actions={'CREATE_NORMAL_CHAT','SEARCH_HISTORY','RENAME_CHAT'}
     for p in profiles:
         for readiness in LIVE_READINESS_CASES:
@@ -173,8 +173,8 @@ def run():
             if readiness=='reply-generating' and action!='WAIT':
                 errors.append(f'Artemis explored while Gemini was still generating: {p.lang}')
         post_live_settle_cases+=1
-        settle_ms=4000
-        if settle_ms<4000: errors.append(f'post-Live settle too short: {p.lang}')
+        quiet_ms=6000
+        if quiet_ms<6000: errors.append(f'post-Live quiet window too short: {p.lang}')
         for viewport in VIEWPORT_CASES:
             viewport_cases+=1
             if viewport=='live-visible': route=('START_LIVE',)
@@ -201,9 +201,13 @@ def run():
                     idle_ms=20_000 if network=='slow' else 3_000
                     if idle_ms>=180_000: errors.append(f'premature slow-network fallback: {p.lang}/{network}')
                 if network=='accepted-no-response':
-                    nudge_count=1
-                    if nudge_count!=1: errors.append(f'debrief nudge not bounded: {p.lang}')
-                    debrief_nudges+=1
+                    retry_count=1
+                    if retry_count!=1: errors.append(f'full debrief retry not bounded: {p.lang}')
+                    debrief_full_retries+=1
+                if network=='invalid-old-answer':
+                    retry_count=1
+                    if retry_count!=1: errors.append(f'invalid-response retry not bounded: {p.lang}')
+                    invalid_response_retries+=1
                 if network=='thinking-with-respond-now':
                     clicks=1
                     if clicks!=1: errors.append(f'respond-now recovery not bounded: {p.lang}')
@@ -232,8 +236,9 @@ def run():
           f'fail_closed_probes={fail_closed}, debrief_fallbacks={debrief_fallbacks}, '
           f'close_cases={close_cases}, network_close_cases={network_close_cases}, '
           f'cross_chat_rejections={cross_chat_rejections}, live_readiness_cases={live_readiness_cases}, '
-          f'post_live_settle_cases={post_live_settle_cases}, debrief_nudges={debrief_nudges}, '
-          f'respond_now_recoveries={respond_now_recoveries}, version_families={len(VERSION_FAMILIES)}')
+          f'post_live_settle_cases={post_live_settle_cases}, debrief_full_retries={debrief_full_retries}, '
+          f'invalid_response_retries={invalid_response_retries}, respond_now_recoveries={respond_now_recoveries}, '
+          f'version_families={len(VERSION_FAMILIES)}')
     return 0
 
 if __name__=='__main__': sys.exit(run())

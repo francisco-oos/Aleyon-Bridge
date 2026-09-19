@@ -37,6 +37,9 @@ echo Acepta "Permitir depuracion USB" en el telefono si aparece.
 set ERR=%ERRORLEVEL%
 echo.
 if "%ERR%"=="0" (
+  rem Evita el estado "Waiting For Debugger" si Android dejo Aleyon seleccionado
+  rem como aplicacion de depuracion durante una prueba anterior.
+  "%ADB%" shell am clear-debug-app >nul 2>&1
   echo INSTALACION COMPLETADA.
   echo Abre Aleyon Bridge y habilita su automatizacion en Accesibilidad.
 ) else (
