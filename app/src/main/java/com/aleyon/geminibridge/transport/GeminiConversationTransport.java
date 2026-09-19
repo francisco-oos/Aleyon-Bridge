@@ -5,26 +5,66 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import com.aleyon.geminibridge.automation.GeminiUi;
 
 /**
- * Narrow, allow-listed Gemini transport used by Bridge.
+ * Narrow provider transport for Aleyon Bridge.
  *
- * Bridge does not navigate provider history, search conversations or rename
- * chats. Each explicit session uses a fresh normal Gemini chat. Artemis only
- * transports the local context, starts/ends Live and reads the resulting
- * conversation so Aleyon can commit continuity locally.
+ * Provider history, conversation titles and recovery navigation are deliberately
+ * not part of this interface. Each explicit Bridge session uses a fresh normal
+ * Gemini chat; Aleyon owns continuity locally.
  */
 public final class GeminiConversationTransport {
-    public boolean createNormalConversation(AccessibilityNodeInfo root){return GeminiUi.clickNormalNewChat(root);}
-    public boolean isBlankConversation(AccessibilityNodeInfo root){return GeminiUi.isBlankNormalChat(root);}
-    public boolean writeContext(AccessibilityNodeInfo root,String payload){return GeminiUi.writeComposer(root,payload);}
-    public boolean isContextPrepared(AccessibilityNodeInfo root,String payload){return GeminiUi.composerContainsExactText(root,payload);}
-    public boolean submitPreparedContext(AccessibilityNodeInfo root){return GeminiUi.clickSendAction(root);}
-    public boolean startLive(AccessibilityNodeInfo root){return GeminiUi.clickGeminiLive(root);}
-    public boolean isLiveActive(AccessibilityNodeInfo root){return GeminiUi.isLiveScreen(root);}
-    public boolean endLive(AccessibilityNodeInfo root){return GeminiUi.clickEndLive(root);}
-    public boolean openNativeAttachmentSurface(AccessibilityNodeInfo root){return GeminiUi.clickAddFiles(root);}
-    public boolean isGeminiSurface(AccessibilityNodeInfo root){return GeminiUi.isGeminiRoot(root);}
-    public boolean hasComposer(AccessibilityNodeInfo root){return GeminiUi.chatComposer(root)!=null;}
-    public boolean clearComposer(AccessibilityNodeInfo root){return GeminiUi.clearComposer(root);}
-    public String collectConversationText(AccessibilityNodeInfo root){return GeminiUi.collectAllText(root);}
-    public boolean scrollConversation(AccessibilityNodeInfo root){return GeminiUi.scrollForward(root);}
+    public boolean createNormalConversation(AccessibilityNodeInfo root){
+        return GeminiUi.clickNormalNewChat(root);
+    }
+
+    public boolean isBlankConversation(AccessibilityNodeInfo root){
+        return GeminiUi.isBlankNormalChat(root);
+    }
+
+    public boolean writeContext(AccessibilityNodeInfo root,String payload){
+        return GeminiUi.writeComposer(root,payload);
+    }
+
+    public boolean isContextPrepared(AccessibilityNodeInfo root,String payload){
+        return GeminiUi.composerContainsExactText(root,payload);
+    }
+
+    public boolean submitPreparedContext(AccessibilityNodeInfo root){
+        return GeminiUi.clickSendAction(root);
+    }
+
+    public boolean startLive(AccessibilityNodeInfo root){
+        return GeminiUi.clickGeminiLive(root);
+    }
+
+    public boolean isLiveActive(AccessibilityNodeInfo root){
+        return GeminiUi.isLiveScreen(root);
+    }
+
+    public boolean endLive(AccessibilityNodeInfo root){
+        return GeminiUi.clickEndLive(root);
+    }
+
+    public boolean openNativeAttachmentSurface(AccessibilityNodeInfo root){
+        return GeminiUi.clickAddFiles(root);
+    }
+
+    public boolean isGeminiSurface(AccessibilityNodeInfo root){
+        return GeminiUi.isGeminiRoot(root);
+    }
+
+    public boolean hasComposer(AccessibilityNodeInfo root){
+        return GeminiUi.chatComposer(root)!=null;
+    }
+
+    public boolean clearComposer(AccessibilityNodeInfo root){
+        return GeminiUi.clearComposer(root);
+    }
+
+    public String collectConversationText(AccessibilityNodeInfo root){
+        return GeminiUi.collectAllText(root);
+    }
+
+    public boolean scrollConversation(AccessibilityNodeInfo root){
+        return GeminiUi.scrollForward(root);
+    }
 }
