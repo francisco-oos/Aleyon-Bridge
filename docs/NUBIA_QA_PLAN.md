@@ -1,84 +1,206 @@
-# Physical QA plan — 0.5.0-alpha2 adaptive transport
+# Physical QA plan — 0.5.0-alpha3 disposable Gemini sessions
 
 ## Goal
 
-Validate that the user still gets the simple profile → Chat/Live experience while the transport survives different initial Gemini states and reuses/reconstructs one canonical conversation per profile.
+Validate the real product contract on physical phones:
+
+```text
+Bridge profile
+  → fresh normal Gemini chat
+  → local continuity capsule delivered once
+  → Chat or Gemini Live
+  → debrief in the same current chat
+  → verified local commit
+```
+
+Provider chat history and Gemini-generated titles are disposable. No test may depend on a canonical provider conversation, provider search, rename or a recovery workflow.
+
+## Before testing
+
+Record:
+- Bridge version;
+- Gemini/Google app version;
+- Android version;
+- phone model;
+- whether the Bridge Accessibility service is enabled.
+
+Do **not** clear Bridge app data just to upgrade from alpha2. The alpha3 migration preserves profile/learning data and ignores obsolete provider-chat state.
 
 ## Required cases
 
-### N1 — First Live session / canonical creation
-1. Create/save a local language profile.
-2. Tap `INICIAR LIVE`.
-3. For a migrated/existing local profile with no canonical registry entry, Bridge must **not search**. It should observe Gemini, open the conversation list semantically, create a normal chat directly, inject a reconstruction capsule, rename it to `ALEYON — <idioma>`, then enter Gemini Live.
-4. Context must never be injected into Temporary chat.
-5. The Aleyon bubble appears without covering or stealing focus from Gemini.
+### N1 — First Live session from Bridge
 
-### N2 — Canonical reuse
-Start the same profile again twice: once as Chat and once as Live. Bridge must reopen the same canonical Gemini conversation instead of creating additional provider chats. Each session still receives a new local `SESSION_ID` and updated bounded context.
+1. Open Bridge and choose an existing or new profile.
+2. Tap **INICIAR LIVE**.
+3. Bridge/Artemis must reach a fresh normal Gemini chat.
+4. The continuity capsule must be inserted and **sent automatically exactly once**.
+5. After the send is verified, Artemis must start Gemini Live.
+6. The Aleyon bubble may remain available but must not steal focus or block Gemini.
 
-### N3 — Gemini already open on another chat
-Before starting Bridge, leave Gemini open on an unrelated normal conversation. Start the profile. Bridge must ignore that initial chat, resolve the canonical conversation and continue without injecting learner context into the unrelated thread.
+Pass condition: no manual Send, no drawer/search/rename detour and Live becomes active.
 
-### N4 — Gemini Live already open
-Before starting Bridge, manually enter an unrelated Gemini Live session. Start Bridge. The transport must treat Live as an initial state, return to chat chrome, resolve the canonical conversation, then start the requested session normally. No runaway BACK loop or context injection into the unrelated Live session is allowed.
+### N2 — Repeated Live sessions
 
-### N5 — Canonical conversation deleted
-1. Complete at least one session and confirm local memory has a summary/next objective.
-2. Manually delete the `ALEYON — <idioma>` conversation in Gemini.
-3. Start the profile again.
-4. Because this chat was previously verified, Bridge may perform one bounded semantic search. If no actionable result appears, it must mark the provider cache missing, return to the list, create a new normal chat, send a reconstruction capsule derived from local memory, rename it to the same canonical title and continue.
-5. Previously stored local learner progress must remain intact.
+Run the same profile three times.
 
-### N5b — Search surface isolation / real probe regression
+Each explicit start must use a fresh normal Gemini chat and the current local summary/next objective. It must not search for or reopen a previous Gemini conversation.
 
-1. Manually open Gemini's **Buscar chats** surface before starting Bridge.
-2. Start an existing profile.
-3. Bridge must classify this as `CONVERSATION_SEARCH`, never as `CHAT`.
-4. The search `EditText` must never receive the learning context capsule.
-5. Text typed as a search query must never count as a conversation result.
-6. Bridge must back out/normalize safely. If it cannot progress within the bounded recovery budget, it must return to Bridge with a recoverable compatibility error instead of remaining frozen on `Preparando…`.
+Pass condition: three successful sessions can create three disposable Gemini history entries without affecting Bridge continuity.
 
-### N6 — Long conversation / search fallback
-Make the canonical chat old enough that it is not in the immediately visible drawer list if possible. Bridge should use semantic conversation search before deciding to rebuild. If search cannot expose the conversation, the system must fail closed/rebuild rather than click an arbitrary row.
+### N3 — Gemini already open on an unrelated chat
 
-### N7 — Close and learn
-Close from the bubble or from Gemini. Bridge must return to the canonical thread, wait for transcript settling, compute/retain the current-session delta locally, request only the short human-readable debrief, verify local commit and post a summary notification.
+1. Leave Gemini open on any existing conversation.
+2. Return to Bridge.
+3. Start Live.
 
-### N8 — Restart/recovery
-Force-stop Aleyon during an active session, reopen it and recover without losing the local `LearningLedger` or corrupting the canonical-conversation registry.
+Artemis must create/verify a fresh normal chat before delivering learner context. It must never paste the capsule into the unrelated thread.
 
-### N9 — Consent
-If Gemini shows a consent/extension decision, Bridge must pause for the user. It must never choose Accept/Cancel automatically.
+### N4 — Gemini already in Live
 
-### N10 — Google host path
-If Gemini is hosted by `com.google.android.googlequicksearchbox`, actions are allowed only after Gemini/Robin verification. Record a passive probe if this path fails.
+1. Manually start an unrelated Gemini Live session.
+2. Start a Bridge session.
 
-## Multi-device parity
+Artemis must observe the actual Live state, leave it safely, obtain a fresh normal chat, deliver context and start the requested Bridge Live session. There must be no blind repeated Back loop.
 
-Repeat N1–N7 on at least one second Android device or emulator with a different resolution/build. Device brand must not select a code path. Compare semantic evidence, not coordinates.
+### N5 — Navigation drawer or conversation search already open
 
-## Evidence
+Start Bridge while Gemini is showing:
+- the conversation drawer; and separately
+- **Buscar chats**.
 
-For each failure save: Bridge version, Gemini version, Android version, profile id, local `SESSION_ID`, stage, redacted passive probe, compatibility route/failure evidence, visible error and screenshot/video when useful.
+Artemis must treat these as semantic states, leave them and reach a fresh normal chat. The search EditText must never receive learner context.
+
+### N6 — Temporary Chat open
+
+Start Bridge while Gemini is in Temporary Chat.
+
+Bridge must not inject the learning capsule there. Artemis must leave/replace it with a fresh normal chat or fail closed with clear diagnostic evidence.
+
+### N7 — Context Send regression
+
+This is the regression test for the user-reported alpha2 failure.
+
+1. Start Live.
+2. Watch the composer.
+3. Verify the complete capsule appears.
+4. Verify the Send action occurs automatically.
+5. Verify the composer clears / conversation advances.
+6. Verify Artemis does not reinsert the same capsule.
+7. Verify Live begins without touching the phone.
+
+Any manual Send required = FAIL.
+
+### N8 — Live button variation
+
+Test when Live is exposed through:
+- the known Robin resource;
+- a semantic accessibility label;
+- structural composer evidence, if available on a second device/build.
+
+Artemis must act from current semantic evidence rather than phone brand or coordinates.
+
+### N9 — Close and learn
+
+1. Have a short Live conversation.
+2. End it normally or use **Cerrar sesión** from the Aleyon bubble.
+3. Bridge must return to the same current provider chat.
+4. Observe transcript until stable.
+5. Send the four-line debrief request exactly once.
+6. Parse the new debrief.
+7. Persist summary, progress/reinforcement evidence and next objective locally.
+8. Return Bridge to READY.
+
+Open **Sesiones** / **Memoria** and verify the result is present.
+
+### N10 — Process interruption, no recovery mode
+
+1. Start a session.
+2. Force-stop Bridge during preparation.
+3. Reopen Bridge.
+4. Start the same profile again.
+
+Expected: there is no **Recuperar** action. The next explicit start discards the unfinished provider transaction and starts a clean Gemini chat from preserved local memory.
+
+### N11 — Existing alpha2 profile upgrade
+
+Upgrade over the currently installed build without deleting app data.
+
+Verify:
+- profile still exists;
+- prior summary/evidence still exists;
+- no old canonical-chat state is required;
+- any legacy `RECOVERING` state is normalized to READY;
+- first alpha3 start creates a fresh provider chat.
+
+### N12 — Consent/security surface
+
+If Gemini/Android shows a consent or security decision, Bridge must remove its overlay and wait. It must never select Accept/Cancel for the user.
+
+### N13 — Native document handoff
+
+During a verified current Chat session:
+1. open Gemini's native attachment surface;
+2. user selects a small PDF with Android/Gemini's picker;
+3. ask Gemini to use it in the learning task;
+4. close the session and verify only learning result/evidence is retained by Bridge.
+
+Bridge itself must not request broad storage/microphone authority.
+
+### N14 — Image handoff
+
+Repeat N13 with an image and a visual-language task.
+
+### N15 — Provider UI drift / relearning
+
+After a Gemini update or on a second phone with a different Gemini build:
+1. start the same profile;
+2. observe whether the stored Artemis routine still matches;
+3. if state/action evidence no longer matches, the routine must be invalidated;
+4. Artemis must relearn using allowed semantic capabilities;
+5. if the new UI is semantically opaque, Bridge must fail closed rather than guess.
+
+A changed UI must not select a device-brand code path or absolute coordinates.
+
+## Timing / anti-robot validation
+
+During N1–N15, verify behavior from state transitions, not clock delays.
+
+Allowed:
+- accessibility-event debounce;
+- short asynchronous re-observation when Android emits no useful event;
+- overall anti-freeze watchdog;
+- read-only diagnostic sampling.
+
+Not allowed:
+- “wait N seconds, then click Send”;
+- “wait N seconds, then click Live”;
+- coordinate taps;
+- fixed screen-step sequences;
+- synchronous sleep loops in provider transport.
+
+## Multi-device gate
+
+Run N1–N12 on the Nubia. Repeat at least N1, N3, N5, N7, N8, N9 and N15 on a second Android device/build.
+
+Device brand must not select a code path. Compare semantic evidence and end-state verification, not pixel coordinates.
+
+## Evidence on failure
+
+Save:
+- Bridge/Gemini/Android versions;
+- local session id if available;
+- stage;
+- redacted passive probe;
+- compatibility/routine evidence;
+- visible error;
+- screenshot/video when useful.
+
+The passive probe is read-only. Its timed samples are diagnostic only and never drive a provider action.
 
 ## Promotion gate
 
-N1–N7 must pass twice consecutively on the Nubia before replacing the 0.4 baseline. N1, N2, N3, N5 and N7 must also pass on a second device.
-
-
-### N11 — Native document handoff
-1. Reuse an existing canonical profile/chat.
-2. Open Gemini's native attachment surface from the verified composer.
-3. Select a small PDF with Android/Gemini's native picker.
-4. Ask Gemini to study it and ask questions in the profile language.
-5. Confirm the file stays in the canonical chat and that Bridge itself never requests storage/microphone authority.
-6. Close the session and confirm summary, next objective, progress evidence and reinforcement evidence are persisted locally.
-
-### N12 — Image handoff
-Repeat N11 with a photo/image and a visual-language task. Confirm Gemini performs the visual analysis and Bridge only persists the resulting learning evidence.
-
-### N13 — Provider UI version drift
-After a Gemini app update (or on a second device with a visibly different Gemini UI), repeat N1, N2, N3, N5, N7, N11. The build/device must not select a brand-specific code path. If a control cannot be resolved semantically, Bridge must stop with `APP_UPDATE_REQUIRED` rather than guess.
-
-### N14 — Persistence across process/device-app restart
-Complete a session, force-stop Bridge, reopen it, then restart Gemini and start the same profile. Verify local summary/next objective/evidence and canonical-chat reconstruction state persist. Repeat after manually deleting the Gemini chat.
+Do not promote alpha3 to the stable baseline until:
+- N1–N12 pass twice consecutively on Nubia;
+- the multi-device subset passes on a second device;
+- GitHub **Aleyon Bridge QA** is green;
+- GitHub **Build Android APK** is green.
