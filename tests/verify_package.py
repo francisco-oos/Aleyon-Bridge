@@ -94,7 +94,8 @@ for base in [ROOT/'app/src/main/java',ROOT/'app/src/main/assets/index.html']:
         for p in base.rglob('*'):
             if p.is_file() and p.suffix.lower() in {'.java','.html','.txt'}: prod += p.read_text(encoding='utf-8',errors='replace')+'\n'
     elif base.is_file(): prod += base.read_text(encoding='utf-8',errors='replace')+'\n'
-for token in ['Notebook','notebook','Cuaderno','cuaderno','showCurtain','hideCurtain','DETACHING','REATTACHING','Remove from notebook','Add to notebook']:
+for token in ['Notebook','notebook','Cuaderno','cuaderno','showCurtain','hideCurtain','DETACHING','REATTACHING','Remove from notebook','Add to notebook',
+              'ConversationRegistry','CanonicalConversationPolicy','CanonicalChatRoutingPolicy','RecoveryPlanner','recoverProfile','reconstructConversation']:
     if token in prod: fail(f'forbidden legacy runtime token present: {token}')
 
 prompt_dir=ROOT/'app/src/main/assets/prompts'
