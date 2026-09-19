@@ -3,7 +3,7 @@ package com.aleyon.geminibridge.core;
 public final class CoreTests {
     private static int passed=0;
     public static void main(String[] args){
-        testNaming();testCanonicalConversation();testCanonicalChatRouting();testTransportState();testRecovery();testReconciliation();testDebriefParser();
+        testNaming();testCanonicalConversation();testCanonicalChatRouting();testAdaptiveNavigation();testTransportState();testRecovery();testReconciliation();testDebriefParser();
         testDebriefRejectIncomplete();testTextDelta();testSchemaV5();testScreenBounds();testLedger();testDiagnostics();
         testMaterialPolicy();testProfileMatrix();testAdversarialInputs();
         System.out.println("PASS core tests: "+passed);
@@ -26,6 +26,27 @@ public final class CoreTests {
                 CanonicalChatRoutingPolicy.decide(true,false,false));
         eq(CanonicalChatRoutingPolicy.Action.REBUILD_AFTER_SEARCH,
                 CanonicalChatRoutingPolicy.decide(true,false,true));
+        passed++;
+    }
+    private static void testAdaptiveNavigation(){
+        eq(AdaptiveNavigationPlanner.Action.OPEN_CONVERSATION_LIST,
+                AdaptiveNavigationPlanner.next(TransportState.NORMAL_CHAT,false,false,false,false,0,false,false));
+        eq(AdaptiveNavigationPlanner.Action.CREATE_NORMAL_CHAT,
+                AdaptiveNavigationPlanner.next(TransportState.CONVERSATION_LIST,false,false,false,false,0,false,false));
+        eq(AdaptiveNavigationPlanner.Action.OPEN_SEARCH,
+                AdaptiveNavigationPlanner.next(TransportState.CONVERSATION_LIST,true,false,false,false,0,false,false));
+        eq(AdaptiveNavigationPlanner.Action.TYPE_SEARCH_QUERY,
+                AdaptiveNavigationPlanner.next(TransportState.CONVERSATION_SEARCH,true,false,true,false,0,false,false));
+        eq(AdaptiveNavigationPlanner.Action.WAIT,
+                AdaptiveNavigationPlanner.next(TransportState.CONVERSATION_SEARCH,true,false,true,true,2,false,false));
+        eq(AdaptiveNavigationPlanner.Action.BACK,
+                AdaptiveNavigationPlanner.next(TransportState.CONVERSATION_SEARCH,true,false,true,true,3,false,false));
+        eq(AdaptiveNavigationPlanner.Action.COMPLETE_REUSE,
+                AdaptiveNavigationPlanner.next(TransportState.NORMAL_CHAT,true,false,true,true,0,true,false));
+        eq(AdaptiveNavigationPlanner.Action.COMPLETE_REBUILD,
+                AdaptiveNavigationPlanner.next(TransportState.NORMAL_CHAT,false,false,false,false,0,false,true));
+        eq(AdaptiveNavigationPlanner.Action.FAIL_CLOSED,
+                AdaptiveNavigationPlanner.next(TransportState.UNKNOWN,true,false,false,false,0,false,false));
         passed++;
     }
     private static void testTransportState(){
