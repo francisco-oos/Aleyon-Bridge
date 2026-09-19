@@ -39,6 +39,9 @@ check('android:canRetrieveWindowContent="true"' in config,'required semantic obs
 for token in ['Runtime.getRuntime().exec','new ProcessBuilder','ProcessBuilder(','executeShell(','run_adb_command','adb shell','ARTEMIS_NOTIFY_CMD','MCP_NOTIFY_COMMAND','subprocess','shell=True']:
     check(token not in java,f'general command/shell capability leaked into APK: {token}')
 check('dispatchGesture(' not in java,'coordinate gesture injection leaked into APK')
+for token in ['ServerSocket','CommandServer','GestureController','TokenReceiver','WRITE_SECURE_SETTINGS','takeScreenshot(']:
+    check(token not in java,f'unsafe/unneeded upstream Artemis surface leaked into APK: {token}')
+check('com.aleyon.geminibridge.artemis' in java,'embedded Artemis safety subset missing')
 check('isBlockingConsentDialog(blocker)' in service and 'overlay.hide();' in service,
       'human consent dialogs must remove Aleyon overlays before accepting touch')
 check('overlay.showNotice("Gemini requiere una decisión tuya' not in service,
