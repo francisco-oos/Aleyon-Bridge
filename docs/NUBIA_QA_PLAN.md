@@ -9,7 +9,7 @@ Validate that the user still gets the simple profile → Chat/Live experience wh
 ### N1 — First Live session / canonical creation
 1. Create/save a local language profile.
 2. Tap `INICIAR LIVE`.
-3. Bridge must observe Gemini first, open the conversation list semantically, confirm that the canonical title does not exist, create a normal chat, inject a reconstruction capsule, rename the chat to `ALEYON — <idioma>`, then enter Gemini Live.
+3. For a migrated/existing local profile with no canonical registry entry, Bridge must **not search**. It should observe Gemini, open the conversation list semantically, create a normal chat directly, inject a reconstruction capsule, rename it to `ALEYON — <idioma>`, then enter Gemini Live.
 4. Context must never be injected into Temporary chat.
 5. The Aleyon bubble appears without covering or stealing focus from Gemini.
 
@@ -26,8 +26,17 @@ Before starting Bridge, manually enter an unrelated Gemini Live session. Start B
 1. Complete at least one session and confirm local memory has a summary/next objective.
 2. Manually delete the `ALEYON — <idioma>` conversation in Gemini.
 3. Start the profile again.
-4. Bridge must fail to find the canonical conversation, create a new normal chat, send a reconstruction capsule derived from local memory, rename the new conversation to the same canonical title and continue.
+4. Because this chat was previously verified, Bridge may perform one bounded semantic search. If no actionable result appears, it must mark the provider cache missing, return to the list, create a new normal chat, send a reconstruction capsule derived from local memory, rename it to the same canonical title and continue.
 5. Previously stored local learner progress must remain intact.
+
+### N5b — Search surface isolation / real probe regression
+
+1. Manually open Gemini's **Buscar chats** surface before starting Bridge.
+2. Start an existing profile.
+3. Bridge must classify this as `CONVERSATION_SEARCH`, never as `CHAT`.
+4. The search `EditText` must never receive the learning context capsule.
+5. Text typed as a search query must never count as a conversation result.
+6. Bridge must back out/normalize safely. If it cannot progress within the bounded recovery budget, it must return to Bridge with a recoverable compatibility error instead of remaining frozen on `Preparando…`.
 
 ### N6 — Long conversation / search fallback
 Make the canonical chat old enough that it is not in the immediately visible drawer list if possible. Bridge should use semantic conversation search before deciding to rebuild. If search cannot expose the conversation, the system must fail closed/rebuild rather than click an arbitrary row.
