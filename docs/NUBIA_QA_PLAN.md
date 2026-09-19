@@ -262,3 +262,37 @@ Do not promote alpha3 to the stable baseline until:
 - Confirmar que hace como máximo una pregunta principal por turno y que aprovecha intereses/próximo objetivo sin anunciar una agenda pedagógica.
 - En Chat (no Live) confirmar que sigue disponible `Guardar y cerrar chat`.
 - Después de cerrar Live comprobar debrief, commit local, notificación y detalle de sesión.
+
+
+## 0.5.0-alpha10 — Pedagogical State v2 / presupuesto de contexto (2026-09-19)
+
+Esta iteración NO modifica transporte, Artemis ni cierre físico de alpha9.
+
+### Validación pedagógica
+
+1. Crear/usar un perfil con campos largos y confirmar que Live inicia con la misma fluidez que alpha9.
+2. Tras una sesión, abrir **Estado aprendido**:
+   - `Avance` debe aparecer como avance reciente.
+   - un único `A reforzar` debe mostrarse como **observación**, no como patrón confirmado.
+3. Repetir de forma verificable la misma dificultad en otra sesión:
+   - sólo entonces puede aparecer como **patrón confirmado ×2**.
+4. Editar el perfil declarado y confirmar que el estado aprendido permanece separado; Aleyon no debe sobrescribir nivel, corrección, intereses ni objetivo declarado.
+5. Si no existe evidencia explícita de vocabulario o nivel estimado, esos apartados deben permanecer vacíos. No inferir ni inventar.
+6. Verificar que Gemini ya no recibe historial crudo ni seis eventos completos; sólo el estado pedagógico compacto.
+7. Probar conversación natural:
+   - máximo una pregunta principal por turno;
+   - no obligación de preguntar en cada turno;
+   - error menor: continuar;
+   - error útil: reformulación;
+   - error importante/recurrente: corrección breve;
+   - bloqueo: reducir velocidad → reformular → simplificar → pista → idioma de apoyo.
+8. Repetir 3 sesiones Samsung y 3 Nubia y comparar tiempo desde **Iniciar Live** hasta Live listo contra alpha9. No debe percibirse una regresión por longitud del contexto.
+
+### Presupuesto
+
+- cápsula total: máximo 3.400 caracteres;
+- estado aprendido dentro de la cápsula: máximo 760 caracteres;
+- avances enviados: máximo 2;
+- refuerzos/patrones enviados: máximo 2;
+- vocabulario explícito enviado: máximo 4;
+- historial crudo: 0.

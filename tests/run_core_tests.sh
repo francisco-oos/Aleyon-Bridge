@@ -14,6 +14,8 @@ javac -d "$OUT" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/ScreenBoundsPolicy.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/LearningEvent.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/LearningLedger.java" \
+  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/PedagogicalState.java" \
+  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/PedagogicalStateBuilder.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/SessionReportParser.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/SessionTextDelta.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/AutomationDiagnostics.java" \

@@ -27,6 +27,7 @@ check('startLiveSession' in html and 'function startLive' in html,'Primary Live 
 check('startChatSession' in html and 'function startChat' in html,'Chat interaction missing')
 check("['LIVE_ACTIVE','CHAT_ACTIVE']" in html,'UI does not recognize both active session modes')
 check('getSessionSummaryHistory' in html and 'getProfileMemory' in html,'History/memory review interactions missing')
+check('getPedagogicalState' in html and 'showPedagogy' in html,'Read-only learned pedagogical state UI missing')
 check('startDiagnosticProbe' in html and 'getProbeId' in html,'Correlated passive probe interaction missing')
 check('getPendingSummaryProfileId' in html and 'acknowledgePendingSummary' in html,'Notification-to-summary handoff missing')
 check('removeNativeLocalProfile' in html and 'deleteProfileEverywhere' not in html,'Deletion is not local-only')

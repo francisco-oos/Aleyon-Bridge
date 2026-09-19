@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import com.aleyon.geminibridge.core.LearningEvent;
 import com.aleyon.geminibridge.core.LearningLedger;
+import com.aleyon.geminibridge.core.PedagogicalState;
+import com.aleyon.geminibridge.core.PedagogicalStateBuilder;
 import com.aleyon.geminibridge.core.SessionReportParser;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -45,6 +47,7 @@ public final class LearningStore {
                 a.put(new JSONObject().put("category",e.category).put("skill",e.skill).put("status",e.status).put("evidence",e.evidence).put("ts",e.observedAtMs));
             }
             JSONObject r=new JSONObject().put("summary",l.getLastSessionSummary()).put("next",l.getNextObjective()).put("events",a)
+                    .put("pedagogyVersion",2)
                     .put("lastSessionId",sessionId).put("lastFeedback",clip(report.feedback,3000))
                     .put("lastSessionText",clip(sessionText,12000)).put("updatedAt",System.currentTimeMillis());
             if(!prefs.edit().putString("ledger:"+profileId,r.toString()).commit())return false;
@@ -56,6 +59,27 @@ public final class LearningStore {
     }
 
     public String exportProfileMemory(String profileId){ return prefs.getString("ledger:"+profileId,"{}"); }
+
+    /** Read-only learned state for the local UI. It is derived, never a second source of truth. */
+    public String pedagogicalStateJson(String profileId){
+        try{
+            PedagogicalState s=PedagogicalStateBuilder.build(load(profileId));
+            JSONObject o=new JSONObject()
+                    .put("evidenceCount",s.evidenceCount())
+                    .put("levelEstimate",s.levelEstimate())
+                    .put("nextObjective",s.nextObjective())
+                    .put("lastSummary",s.lastSummary());
+            JSONArray progress=new JSONArray();for(String v:s.progress())progress.put(v);o.put("progress",progress);
+            JSONArray reinforce=new JSONArray();
+            for(PedagogicalState.Pattern p:s.reinforcement()){
+                reinforce.put(new JSONObject().put("text",p.text).put("evidenceCount",p.evidenceCount).put("confirmed",p.confirmed));
+            }
+            o.put("reinforcement",reinforce);
+            JSONArray vocabulary=new JSONArray();for(String v:s.vocabulary())vocabulary.put(v);o.put("vocabulary",vocabulary);
+            return o.toString();
+        }catch(Exception e){return "{}";}
+    }
+
     public void remove(String profileId){prefs.edit().remove("ledger:"+profileId).apply();}
     private static String clip(String v,int max){String s=v==null?"":v.trim();return s.length()<=max?s:s.substring(0,max);}
 }

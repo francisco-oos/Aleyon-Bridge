@@ -4,7 +4,7 @@ public final class CoreTests {
     private static int passed=0;
     public static void main(String[] args){
         testNaming();testTransportState();testDebriefParser();testDebriefMarkdown();testDebriefRejectIncomplete();testDebriefStreaming();
-        testTextDelta();testConversationEvidenceGuard();testSchemaV5();testScreenBounds();testLedger();testDiagnostics();
+        testTextDelta();testConversationEvidenceGuard();testSchemaV5();testScreenBounds();testLedger();testPedagogicalState();testPedagogicalBudget();testDiagnostics();
         testMaterialPolicy();testProfileMatrix();testAdversarialInputs();
         System.out.println("PASS core tests: "+passed);
     }
@@ -76,6 +76,35 @@ public final class CoreTests {
         l.addVerified(new LearningEvent("grammar","past","learning","I went",1));
         l.addVerified(new LearningEvent("grammar","past","learning","",2));
         eq(1,l.snapshot().size());eq("x",l.getLastSessionSummary());passed++;
+    }
+    private static void testPedagogicalState(){
+        LearningLedger l=new LearningLedger();
+        l.setLastSessionSummary("Conversación breve sobre trabajo.");
+        l.setNextObjective("Formular preguntas técnicas naturales.");
+        l.addVerified(new LearningEvent("session-progress","progreso-observado","observed","Mantuvo turnos más largos.",1));
+        l.addVerified(new LearningEvent("session-reinforcement","a-reforzar","needs-practice","Pasado simple en preguntas.",2));
+        PedagogicalState first=PedagogicalStateBuilder.build(l);
+        eq(1,first.progress().size());eq(1,first.reinforcement().size());
+        ok(!first.reinforcement().get(0).confirmed);
+        l.addVerified(new LearningEvent("session-reinforcement","a-reforzar","needs-practice","Pasado simple en preguntas.",3));
+        l.addVerified(new LearningEvent("vocabulary","troubleshooting","learning","troubleshooting",4));
+        PedagogicalState repeated=PedagogicalStateBuilder.build(l);
+        ok(repeated.reinforcement().get(0).confirmed);
+        eq(2,repeated.reinforcement().get(0).evidenceCount);
+        ok(repeated.vocabulary().contains("troubleshooting"));
+        ok(repeated.compactText(760).contains("patrón confirmado"));
+        passed++;
+    }
+    private static void testPedagogicalBudget(){
+        LearningLedger l=new LearningLedger();
+        for(int i=0;i<100;i++){
+            l.addVerified(new LearningEvent(i%2==0?"session-progress":"session-reinforcement",
+                    "skill-"+i,i%2==0?"observed":"needs-practice",
+                    "Evidencia pedagógica extensa número "+i+" con suficientes palabras para probar compactación y límites.",i));
+        }
+        PedagogicalState s=PedagogicalStateBuilder.build(l);
+        ok(s.progress().size()<=2);ok(s.reinforcement().size()<=2);ok(s.vocabulary().size()<=4);
+        ok(s.compactText(760).length()<=760);passed++;
     }
     private static void testDiagnostics(){
         AutomationDiagnostics d=new AutomationDiagnostics("r","s","b","a",1L,"p",true,2,"sel",0,"ok","focused",2,"windows");

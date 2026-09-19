@@ -14,6 +14,8 @@ javac -d "%OUT%" ^
  app\src\main\java\com\aleyon\geminibridge\core\ScreenBoundsPolicy.java ^
  app\src\main\java\com\aleyon\geminibridge\core\LearningEvent.java ^
  app\src\main\java\com\aleyon\geminibridge\core\LearningLedger.java ^
+ app\src\main\java\com\aleyon\geminibridge\core\PedagogicalState.java ^
+ app\src\main\java\com\aleyon\geminibridge\core\PedagogicalStateBuilder.java ^
  app\src\main\java\com\aleyon\geminibridge\core\SessionReportParser.java ^
  app\src\main\java\com\aleyon\geminibridge\core\SessionTextDelta.java ^
  app\src\main\java\com\aleyon\geminibridge\core\AutomationDiagnostics.java ^

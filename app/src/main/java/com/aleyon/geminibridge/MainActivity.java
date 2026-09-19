@@ -167,6 +167,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public String getSessionSummaryHistory(String id){return journal.closeSummaryHistory(id).toString();}
         @JavascriptInterface public String getProfileStatus(String id){try{return journal.statusJson(id).toString();}catch(Exception e){return "{\"profileId\":\""+id+"\",\"stage\":\"ERROR\"}";}}
         @JavascriptInterface public String getProfileMemory(String id){return learning.exportProfileMemory(id);}
+        @JavascriptInterface public String getPedagogicalState(String id){return learning.pedagogicalStateJson(id);}
         @JavascriptInterface public String getDiagnosticsJson(){return diagnostics.recentJson();}
         @JavascriptInterface public String getPendingSummaryProfileId(){return activity.getSharedPreferences("aleyon_runtime",MODE_PRIVATE).getString("pending_summary_profile","");}
         @JavascriptInterface public void acknowledgePendingSummary(){activity.getSharedPreferences("aleyon_runtime",MODE_PRIVATE).edit().remove("pending_summary_profile").apply();}

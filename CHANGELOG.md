@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0-alpha10 — Pedagogical State v2 / cápsula compacta
+
+- Congela el transporte validado de alpha9: no cambia Artemis, navegación Gemini, inicio de Live, salida por X, cierre cross-chat ni notificaciones.
+- Separa explícitamente el perfil declarado del **estado pedagógico aprendido**. Las observaciones locales nunca sobrescriben silenciosamente el perfil del alumno.
+- Añade `PedagogicalStateBuilder`, derivado únicamente del ledger local ya verificado; no introduce llamadas adicionales a Gemini.
+- Un único `A reforzar` se mantiene como **observación**. Sólo evidencia equivalente repetida al menos dos veces puede mostrarse como **patrón confirmado**.
+- El estado compacto limita por sesión: 2 avances recientes, 2 elementos a reforzar, hasta 4 elementos de vocabulario con evidencia explícita, nivel estimado sólo si existe evidencia y un próximo objetivo.
+- La cápsula deja de enviar resumen largo + seis eventos crudos. Gemini recibe sólo perfil esencial, política pedagógica compacta y el estado local de alta señal.
+- Impone un presupuesto duro de **3.400 caracteres** para toda la cápsula y **760 caracteres** para el estado aprendido; el historial completo nunca se pega al proveedor.
+- Recupera la lógica útil del tutor antiguo sin recuperar su prompt enorme: conversación primero, máximo una pregunta principal, corrección por gravedad y escalera de ayuda ante bloqueo.
+- Añade una vista local **Estado aprendido** en el menú del perfil para revisar avances, observaciones/patrones, vocabulario, nivel estimado y próximo objetivo sin modificar el perfil.
+- El cierre sigue usando exactamente el mismo debrief de cuatro líneas de alpha9; no se añade otro mensaje ni análisis extra.
+
+
 ## 0.5.0-alpha9 — Live termina desde Gemini / tutor menos robótico
 
 - Revisión de las nuevas grabaciones físicas Samsung y Nubia.
