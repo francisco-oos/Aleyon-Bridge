@@ -41,9 +41,11 @@ public class Context {
 ''',
 "android/app/Activity.java": '''
 package android.app;
-import android.content.Context; import android.os.Bundle;
+import android.content.Context; import android.content.Intent; import android.os.Bundle;
 public class Activity extends Context {
-  protected void onCreate(Bundle b){} protected void onResume(){}
+  private Intent intent=new Intent();
+  protected void onCreate(Bundle b){} protected void onResume(){} protected void onNewIntent(Intent i){intent=i;}
+  public Intent getIntent(){return intent;} public void setIntent(Intent i){intent=i;}
   public void onBackPressed(){} public void setContentView(Object v){}
   public void runOnUiThread(Runnable r){r.run();}
   public void requestPermissions(String[] perms,int code){}
@@ -67,10 +69,10 @@ public interface SharedPreferences {
 package android.content;
 public class Intent {
  public static final String ACTION_SEND="android.intent.action.SEND", EXTRA_TEXT="android.intent.extra.TEXT";
- public static final int FLAG_ACTIVITY_NEW_TASK=0x10000000, FLAG_ACTIVITY_REORDER_TO_FRONT=0x00020000, FLAG_ACTIVITY_CLEAR_TOP=0x04000000;
+ public static final int FLAG_ACTIVITY_NEW_TASK=0x10000000, FLAG_ACTIVITY_REORDER_TO_FRONT=0x00020000, FLAG_ACTIVITY_CLEAR_TOP=0x04000000, FLAG_ACTIVITY_SINGLE_TOP=0x20000000;
  public Intent(){} public Intent(String a){} public Intent(Context c,Class<?> cls){}
  public Intent addFlags(int f){return this;} public Intent setFlags(int f){return this;} public Intent setType(String t){return this;}
- public Intent putExtra(String k,String v){return this;}
+ public Intent putExtra(String k,String v){return this;} public String getStringExtra(String k){return null;}
  public static Intent createChooser(Intent i,String t){return i;}
 }
 ''',

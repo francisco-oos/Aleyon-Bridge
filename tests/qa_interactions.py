@@ -49,8 +49,11 @@ check('SessionTextDelta.delta' in service,'Session evidence delta missing')
 check('debriefConversationAnchor=sessionEvidenceText' in service
       and service.count('SessionTextDelta.containsConversationEvidence')>=3,
       'Close can consume a debrief from a different Gemini chat')
-check('showLatestSummary(id)' in html and 'AndroidBridge.acknowledgePendingSummary()' in html,
+check('showLatestSummary(id)' in html and 'AndroidBridge.acknowledgePendingSummary()' in html
+      and 'openPendingSummary()' in html,
       'Notification does not open the detailed latest close')
+check('captureSummaryIntent' in main and 'NotificationHelper.EXTRA_OPEN_SUMMARY_PROFILE' in main,
+      'Notification tap is not routed to the requested profile summary')
 for token in ['Notebook','notebook','Cuaderno','cuaderno','showCurtain','hideCurtain']:
     check(token not in service, f'Forbidden legacy runtime token in service: {token}')
 check('CompatibilityMemory' in service,'Compatibility diagnostics missing')

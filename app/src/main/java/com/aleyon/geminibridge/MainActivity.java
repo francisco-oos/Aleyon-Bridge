@@ -25,6 +25,7 @@ import com.aleyon.geminibridge.automation.AleyonAccessibilityService;
 import com.aleyon.geminibridge.automation.AutomationRequest;
 import com.aleyon.geminibridge.automation.DiagnosticsRecorder;
 import com.aleyon.geminibridge.automation.LearningStore;
+import com.aleyon.geminibridge.automation.NotificationHelper;
 import com.aleyon.geminibridge.automation.ProfileSpec;
 import com.aleyon.geminibridge.automation.SessionJournal;
 import com.aleyon.geminibridge.transport.CompatibilityMemory;
@@ -37,6 +38,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
+        captureSummaryIntent(getIntent());
         webView=new WebView(this);
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
@@ -80,6 +82,21 @@ public final class MainActivity extends Activity {
         // overlay can make Android security dialogs reject touches. If the
         // user has not granted notifications, NotificationHelper simply skips
         // the optional summary notification without affecting Bridge.
+    }
+
+    private void captureSummaryIntent(Intent intent){
+        if(intent==null)return;
+        String profileId=intent.getStringExtra(NotificationHelper.EXTRA_OPEN_SUMMARY_PROFILE);
+        if(profileId==null||profileId.trim().isEmpty())return;
+        getSharedPreferences("aleyon_runtime",MODE_PRIVATE).edit()
+                .putString("pending_summary_profile",profileId.trim()).apply();
+    }
+
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);
+        setIntent(intent);
+        captureSummaryIntent(intent);
+        if(webView!=null)webView.evaluateJavascript("window.onAleyonResume&&window.onAleyonResume()",null);
     }
 
     @Override protected void onResume(){

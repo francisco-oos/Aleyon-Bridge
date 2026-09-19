@@ -142,6 +142,10 @@ check('android.permission.INTERNET' not in manifest,'Bridge unexpectedly request
 check('SYSTEM_ALERT_WINDOW' not in manifest,'Broad overlay permission introduced')
 check('POST_NOTIFICATIONS' in manifest and 'NotificationHelper.postSessionClosed' in service,'Session close notification regression')
 check('showLatestSummary(id)' in read('app/src/main/assets/index.html'),'Notification resume does not open the latest detailed summary')
+notification=read('app/src/main/java/com/aleyon/geminibridge/automation/NotificationHelper.java')
+check('EXTRA_OPEN_SUMMARY_PROFILE' in notification and 'tapIntent.putExtra' in notification and 'FLAG_ACTIVITY_SINGLE_TOP' in notification,'Notification tap is not bound to a profile summary')
+check('captureSummaryIntent' in main and 'onNewIntent' in main and 'NotificationHelper.EXTRA_OPEN_SUMMARY_PROFILE' in main,'MainActivity does not consume notification summary intents')
+check('openPendingSummary()' in html,'Cold/resumed app cannot open a pending detailed summary')
 check('versionCode 28' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
 check(version=='0.5.0-alpha6','VERSION file mismatch')
 

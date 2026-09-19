@@ -14,7 +14,7 @@ Esta huella es efímera y local. No es un ID persistente del chat de Gemini y no
 
 ## Notificación
 
-`pending_summary_profile` abre ahora directamente el cierre completo más reciente. El historial anterior sigue disponible desde ese diálogo.
+`pending_summary_profile` abre ahora directamente el cierre completo más reciente. La notificación incluye `EXTRA_OPEN_SUMMARY_PROFILE`; al tocarla, incluso si Aleyon ya estaba abierto, MainActivity vuelve a marcar ese perfil como pendiente y abre el detalle completo. El historial anterior sigue disponible desde ese diálogo.
 
 ## Gate físico
 

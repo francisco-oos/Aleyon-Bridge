@@ -70,7 +70,8 @@ function probeSummary(raw){try{const j=JSON.parse(raw||'{}'),samples=j.samples||
 function probe(){if(!ensureReadyToRun())return;const id=AndroidBridge.startDiagnosticProbe();if(!id){alert('No pude iniciar el diagnóstico.');return}dialog('<h2>Observando Gemini…</h2><p>Aleyon no tocará controles durante este diagnóstico.</p>');let tries=0;const t=setInterval(()=>{tries++;if(AndroidBridge.getProbeId()===id&&AndroidBridge.getProbeTimestamp()>0){clearInterval(t);const j=AndroidBridge.getProbeJson();dialog(`<h2>Diagnóstico Gemini</h2><p class="small">Resumen legible de las tres muestras. El JSON completo sólo se muestra si decides copiarlo.</p>${probeSummary(j)}<div class="row" style="margin-top:12px"><button class="primary" onclick='AndroidBridge.copyText(${JSON.stringify(j)});toast("Diagnóstico copiado")'>Copiar diagnóstico</button><button class="secondary" onclick="closeDialog()">Cerrar</button></div>`)}else if(tries>12){clearInterval(t)}},700)}
 function handleAleyonBack(){if(!document.getElementById('dialog').classList.contains('hidden')){closeDialog();return true}if(!document.getElementById('home').classList.contains('hidden'))return false;showHome();return true}
 window.handleAleyonBack=handleAleyonBack;
-window.onAleyonResume=function(){mergeNative();saveLocal();render();if(native()){try{const id=AndroidBridge.getPendingSummaryProfileId();if(id){showLatestSummary(id);AndroidBridge.acknowledgePendingSummary()}}catch(e){}}};
-load();render();
+function openPendingSummary(){if(!native())return;try{const id=AndroidBridge.getPendingSummaryProfileId();if(id){showLatestSummary(id);AndroidBridge.acknowledgePendingSummary()}}catch(e){}}
+window.onAleyonResume=function(){mergeNative();saveLocal();render();openPendingSummary()};
+load();mergeNative();saveLocal();render();openPendingSummary();
 </script>
 </body></html>

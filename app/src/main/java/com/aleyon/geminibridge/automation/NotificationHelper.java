@@ -34,6 +34,7 @@ import com.aleyon.geminibridge.R;
  * service with no UI to recover from a failure.
  */
 public final class NotificationHelper {
+    public static final String EXTRA_OPEN_SUMMARY_PROFILE = "aleyon_open_summary_profile";
     private static final String CHANNEL_ID = "aleyon_session_summary";
     private static final int MAX_BODY_CHARS = 1400;
 
@@ -60,7 +61,9 @@ public final class NotificationHelper {
             String body = excerpt(summary);
 
             Intent tapIntent = new Intent(context, MainActivity.class);
-            tapIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            tapIntent.putExtra(EXTRA_OPEN_SUMMARY_PROFILE, profileId);
+            tapIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             PendingIntent pi = PendingIntent.getActivity(context, profileId.hashCode(),
                     tapIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
