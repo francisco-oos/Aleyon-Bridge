@@ -28,7 +28,6 @@ import com.aleyon.geminibridge.automation.LearningStore;
 import com.aleyon.geminibridge.automation.ProfileSpec;
 import com.aleyon.geminibridge.automation.SessionJournal;
 import com.aleyon.geminibridge.transport.CompatibilityMemory;
-import com.aleyon.geminibridge.transport.ConversationRegistry;
 
 import java.util.UUID;
 
@@ -101,9 +100,8 @@ public final class MainActivity extends Activity {
         private final SessionJournal journal;
         private final LearningStore learning;
         private final DiagnosticsRecorder diagnostics;
-        private final ConversationRegistry conversations;
         private final CompatibilityMemory compatibility;
-        AndroidBridge(Activity a){activity=a;journal=new SessionJournal(a);learning=new LearningStore(a);diagnostics=new DiagnosticsRecorder(a);conversations=new ConversationRegistry(a);compatibility=new CompatibilityMemory(a);}
+        AndroidBridge(Activity a){activity=a;journal=new SessionJournal(a);learning=new LearningStore(a);diagnostics=new DiagnosticsRecorder(a);compatibility=new CompatibilityMemory(a);}
 
         @JavascriptInterface public boolean isGeminiInstalled(){
             try{activity.getPackageManager().getPackageInfo(AleyonAccessibilityService.GEMINI_PACKAGE,0);return true;}
@@ -138,7 +136,6 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public boolean startLiveSession(String json){return submit(new AutomationRequest(AutomationRequest.Type.START_LIVE_SESSION,json,false));}
         @JavascriptInterface public boolean startChatSession(String json){return submit(new AutomationRequest(AutomationRequest.Type.START_CHAT_SESSION,json,false));}
         @JavascriptInterface public boolean closeSession(String json){return submit(new AutomationRequest(AutomationRequest.Type.CLOSE_SESSION,json,false));}
-        @JavascriptInterface public boolean recoverProfile(String json){return submit(new AutomationRequest(AutomationRequest.Type.RECOVER,json,false));}
 
         @JavascriptInterface public String startDiagnosticProbe(){
             String id="probe-"+UUID.randomUUID();
@@ -156,7 +153,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public String getDiagnosticsJson(){return diagnostics.recentJson();}
         @JavascriptInterface public String getPendingSummaryProfileId(){return activity.getSharedPreferences("aleyon_runtime",MODE_PRIVATE).getString("pending_summary_profile","");}
         @JavascriptInterface public void acknowledgePendingSummary(){activity.getSharedPreferences("aleyon_runtime",MODE_PRIVATE).edit().remove("pending_summary_profile").apply();}
-        @JavascriptInterface public void removeNativeLocalProfile(String id){journal.removeProfile(id);learning.remove(id);conversations.remove(id);compatibility.remove(id);}
+        @JavascriptInterface public void removeNativeLocalProfile(String id){journal.removeProfile(id);learning.remove(id);compatibility.remove(id);}
 
         @JavascriptInterface public void copyText(String text){activity.runOnUiThread(()->{
             ClipboardManager cm=(ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE);
