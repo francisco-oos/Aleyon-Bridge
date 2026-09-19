@@ -480,8 +480,9 @@ public final class OverlayController {
         Button close = new Button(service);
         close.setAllCaps(false);
         if(closing){
+            // No listener while closing: the button is informational and cannot
+            // restart the close transaction.
             close.setText("Cierre en curso…");
-            close.setEnabled(false);
         }else{
             close.setText(inLive?"Finalizar Live y guardar":inChat?"Guardar y cerrar sesión":"Cancelar preparación");
             close.setOnClickListener(v -> { hidePanel(); listener.onCloseRequested(); });
