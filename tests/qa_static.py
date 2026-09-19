@@ -62,8 +62,11 @@ check('CONVERSATION_SEARCH' in read('app/src/main/java/com/aleyon/geminibridge/c
 composer_block=ui[ui.find('public static AccessibilityNodeInfo chatComposer'):ui.find('public static boolean sendMessage')]
 check('return firstEditable(root);' not in composer_block,'Arbitrary EditText can still masquerade as Gemini composer')
 check('isConversationSearchOpen' in ui and 'conversationTitleNode' in ui,'Search-surface isolation missing')
-check('CanonicalChatRoutingPolicy.decide' in service and 'conversations.isKnown(profile.id)' in service,'Migrated profile routing still searches blindly')
-check(service.index('CanonicalChatRoutingPolicy.decide') < service.index('transport.openConversationSearch'),'Search is not gated by canonical registry policy')
+start_flow=service[service.find('private void pumpStart()'):service.find('private void pumpWait()')]
+check('AdaptiveNavigationPlanner.next' in start_flow and 'conversations.isKnown(profile.id)' in start_flow,'Reactive navigation planner missing from START flow')
+check('CanonicalChatRoutingPolicy.decide' not in service,'Canonical routing policy leaked back into Android orchestration')
+check(start_flow.find('AdaptiveNavigationPlanner.next') < start_flow.find('transport.openConversationSearch'),'Search is not gated by a fresh navigation decision')
+check('case 3 ->' not in start_flow and 'case 4 ->' not in start_flow and 'case 5 ->' not in start_flow,'Fixed list/search/query route returned to START flow')
 check('MAX_START_RUNTIME_MS' in service and 'MAX_ROUTE_REPLANS' in service,'Anti-freeze transport watchdog missing')
 check('o.liveAvailable' in service and 'GeminiStateObserver.observe' in service,'Live capability gate missing')
 check(service.index('o.liveAvailable') < service.index('transition(profile,SessionStage.CONTEXT_INJECTING)'),'Live capability must be proven before context injection')
