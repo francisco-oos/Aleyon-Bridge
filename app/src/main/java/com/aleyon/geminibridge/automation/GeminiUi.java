@@ -292,6 +292,31 @@ public final class GeminiUi {
         return null;
     }
 
+    /** True only for a clean normal chat with no visible conversation messages yet. */
+    public static boolean isBlankNormalChat(AccessibilityNodeInfo root) {
+        if (root == null || isTemporaryChat(root) || isConversationSearchOpen(root)
+                || isNavigationDrawerOpen(root) || isLiveScreen(root)
+                || chatComposer(root) == null) return false;
+        return !hasVisibleResourceSuffix(root, "assistant_robin_user_message_container")
+                && !hasVisibleResourceSuffix(root, "assistant_robin_content_message_container");
+    }
+
+    private static boolean hasVisibleResourceSuffix(AccessibilityNodeInfo root, String suffix) {
+        if (root == null || suffix == null || suffix.isEmpty()) return false;
+        Queue<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        while (!q.isEmpty()) {
+            AccessibilityNodeInfo n = q.remove();
+            String id = n.getViewIdResourceName();
+            if (id != null && id.endsWith(suffix) && isActionablyVisible(n, root)) return true;
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) q.add(child);
+            }
+        }
+        return false;
+    }
+
     /** True only when the verified normal composer contains exactly this payload. */
     public static boolean composerContainsExactText(AccessibilityNodeInfo root, String text) {
         AccessibilityNodeInfo editable = chatComposer(root);
