@@ -34,19 +34,18 @@ public final class OverlayController {
     public static final class Status {
         public final String stageLabel;
         public final String detail;
-        public final boolean recoveryPending;
+        public final boolean attentionPending;
 
-        public Status(String stageLabel, String detail, boolean recoveryPending) {
+        public Status(String stageLabel, String detail, boolean attentionPending) {
             this.stageLabel = stageLabel == null ? "" : stageLabel;
             this.detail = detail == null ? "" : detail;
-            this.recoveryPending = recoveryPending;
+            this.attentionPending = attentionPending;
         }
     }
 
     public interface Listener {
         void onReturnToGemini();
         void onCloseRequested();
-        void onRecoverRequested();
         /** Read fresh from the journal every time the panel opens - never cached. */
         Status currentStatus();
     }
@@ -327,7 +326,7 @@ public final class OverlayController {
     /**
      * Flips the bubble into a visibly different (not animated) state so a
      * failure mid-Live/Close never disappears silently - the journal still
-     * holds enough state (recoverableStage/error) to continue, and this is
+     * preserves enough diagnostic state to explain the last failure, and this is
      * the only signal the user needs before opening the panel.
      */
     public void markNeedsAttention() {
@@ -423,7 +422,7 @@ public final class OverlayController {
             TextView stageLine = new TextView(service);
             stageLine.setText("Estado: " + status.stageLabel);
             stageLine.setTextSize(13f);
-            stageLine.setTextColor(status.recoveryPending
+            stageLine.setTextColor(status.attentionPending
                     ? ATTENTION_COLOR : Color.rgb(70, 82, 105));
             stageLine.setPadding(0, 10, 0, 0);
             box.addView(stageLine);
@@ -468,17 +467,6 @@ public final class OverlayController {
         close.setText(active ? "Cerrar sesión" : "Cancelar preparación");
         close.setOnClickListener(v -> { hidePanel(); listener.onCloseRequested(); });
         box.addView(close);
-
-        if (status != null && status.recoveryPending) {
-            Button recover = new Button(service);
-            recover.setAllCaps(false);
-            recover.setText("Recuperar");
-            recover.setOnClickListener(v -> {
-                hidePanel();
-                listener.onRecoverRequested();
-            });
-            box.addView(recover);
-        }
 
         panel = box;
         box.setOnTouchListener((v,event) -> {
