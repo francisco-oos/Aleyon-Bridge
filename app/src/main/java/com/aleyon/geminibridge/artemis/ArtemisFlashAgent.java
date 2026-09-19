@@ -28,6 +28,11 @@ public final class ArtemisFlashAgent {
         OPEN_SEARCH,
         TYPE_SEARCH_QUERY,
         CREATE_NORMAL_CHAT,
+        WRITE_CONTEXT,
+        SUBMIT_CONTEXT,
+        START_LIVE,
+        COMPLETE_CONTEXT,
+        COMPLETE_LIVE,
         COMPLETE_REUSE,
         COMPLETE_REBUILD,
         FAIL_CLOSED
@@ -57,21 +62,66 @@ public final class ArtemisFlashAgent {
             boolean openingCanonical,
             boolean rebuilding){
         if(o==null)return Action.FAIL_CLOSED;
+        Action fallback=explore(o.state,registryKnown,o.canonicalConversationVisible,
+                searchAttempted,queryIssued,searchMisses,openingCanonical,rebuilding);
+        return replayOr(o.state,fallback);
+    }
 
+    /**
+     * Flash-style context delivery: decide from the current observation, never
+     * from an assumed screen sequence. A successful WRITE/SUBMIT routine can
+     * be replayed on later sessions and is invalidated on mismatch/failure.
+     */
+    public Action nextContext(TransportObservation o,
+            boolean payloadPrepared,
+            boolean deliveryObserved,
+            boolean writeIssued,
+            int submitAttempts){
+        if(o==null)return Action.FAIL_CLOSED;
+        if(deliveryObserved)return Action.COMPLETE_CONTEXT;
+        Action fallback=switch(o.state){
+            case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
+            case NORMAL_CHAT -> {
+                if(payloadPrepared)yield Action.SUBMIT_CONTEXT;
+                if(!writeIssued)yield Action.WRITE_CONTEXT;
+                if(submitAttempts<3)yield Action.WAIT;
+                yield Action.FAIL_CLOSED;
+            }
+            case LIVE_ACTIVE -> Action.BACK;
+            default -> Action.FAIL_CLOSED;
+        };
+        return replayOr(o.state,fallback);
+    }
+
+    /** Starts Live only when the current semantic observation proves it is available. */
+    public Action nextLive(TransportObservation o){
+        if(o==null)return Action.FAIL_CLOSED;
+        if(o.state==TransportState.LIVE_ACTIVE)return Action.COMPLETE_LIVE;
+        Action fallback=switch(o.state){
+            case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
+            case NORMAL_CHAT -> o.liveAvailable?Action.START_LIVE:Action.WAIT;
+            default -> Action.FAIL_CLOSED;
+        };
+        return replayOr(o.state,fallback);
+    }
+
+    private Action replayOr(TransportState state,Action fallback){
         if(replaying&&replayIndex<replay.steps.size()){
             ArtemisRoutineMemory.Step s=replay.steps.get(replayIndex);
-            if(s.state==o.state){
+            if(s.state==state){
                 try{return Action.valueOf(s.action);}catch(Exception ignored){}
             }
-            memory.invalidate(routineKey);
-            replaying=false;
-            replay=null;
-            replayIndex=0;
-            learned.clear();
+            invalidateReplay();
         }
+        return fallback;
+    }
 
-        return explore(o.state,registryKnown,o.canonicalConversationVisible,
-                searchAttempted,queryIssued,searchMisses,openingCanonical,rebuilding);
+    private void invalidateReplay(){
+        memory.invalidate(routineKey);
+        replaying=false;
+        replay=null;
+        replayIndex=0;
+        learned.clear();
     }
 
     private static Action explore(TransportState state,
@@ -125,13 +175,7 @@ public final class ArtemisFlashAgent {
     }
 
     public void actionFailed(){
-        if(replaying){
-            memory.invalidate(routineKey);
-            replaying=false;
-            replay=null;
-            replayIndex=0;
-            learned.clear();
-        }
+        if(replaying)invalidateReplay();
     }
 
     public void complete(){
@@ -144,6 +188,9 @@ public final class ArtemisFlashAgent {
                 ||a==Action.OPEN_VISIBLE_CANONICAL
                 ||a==Action.OPEN_SEARCH
                 ||a==Action.TYPE_SEARCH_QUERY
-                ||a==Action.CREATE_NORMAL_CHAT;
+                ||a==Action.CREATE_NORMAL_CHAT
+                ||a==Action.WRITE_CONTEXT
+                ||a==Action.SUBMIT_CONTEXT
+                ||a==Action.START_LIVE;
     }
 }
