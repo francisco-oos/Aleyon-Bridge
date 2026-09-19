@@ -13,13 +13,11 @@ import com.aleyon.geminibridge.artemis.ArtemisFlashAgent;
 import com.aleyon.geminibridge.artemis.ArtemisRootResolver;
 import com.aleyon.geminibridge.core.AutomationDiagnostics;
 import com.aleyon.geminibridge.core.LearningLedger;
-import com.aleyon.geminibridge.core.RecoveryPlanner;
 import com.aleyon.geminibridge.core.SessionReportParser;
 import com.aleyon.geminibridge.core.SessionStage;
 import com.aleyon.geminibridge.core.SessionTextDelta;
 import com.aleyon.geminibridge.core.TransportState;
 import com.aleyon.geminibridge.transport.CompatibilityMemory;
-import com.aleyon.geminibridge.transport.ConversationRegistry;
 import com.aleyon.geminibridge.transport.GeminiConversationTransport;
 import com.aleyon.geminibridge.transport.GeminiStateObserver;
 import com.aleyon.geminibridge.transport.TransportObservation;
@@ -50,7 +48,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
     private static final long OBSERVE_FALLBACK_MS=350L;
     private static final long RESPONSE_OBSERVE_FALLBACK_MS=650L;
     private static final int MAX_UI_RETRIES=8;
-    private static final int MAX_ROUTE_REPLANS=8;
     private static final long MAX_START_RUNTIME_MS=180_000L;
     private static final long MAX_CLOSE_RUNTIME_MS=180_000L;
 
@@ -61,7 +58,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
     private PromptRepository prompts;
     private OverlayController overlay;
     private DiagnosticsRecorder diagnostics;
-    private ConversationRegistry conversations;
     private CompatibilityMemory compatibility;
     private GeminiConversationTransport transport;
     private Runner runner;
@@ -87,7 +83,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         super.onServiceConnected();instance=this;
         journal=new SessionJournal(this);learning=new LearningStore(this);
         prompts=new PromptRepository(this);overlay=new OverlayController(this,this);
-        diagnostics=new DiagnosticsRecorder(this);conversations=new ConversationRegistry(this);
+        diagnostics=new DiagnosticsRecorder(this);
         compatibility=new CompatibilityMemory(this);transport=new GeminiConversationTransport();kick();
     }
 
@@ -109,10 +105,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
         if(r!=null&&!r.finished){r.beginClose();return;}
         ProfileSpec p=activeOverlayProfile();
         if(p!=null)startRunner(Mode.CLOSE,p,journal.activeSessionMode(p.id));
-    }
-
-    @Override public void onRecoverRequested(){
-        ProfileSpec p=activeOverlayProfile();if(p!=null)startRecovery(p);
     }
 
     @Override public OverlayController.Status currentStatus(){
@@ -158,7 +150,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     case START_LIVE_SESSION -> startFreshSession(p,"LIVE");
                     case START_CHAT_SESSION -> startFreshSession(p,"CHAT");
                     case CLOSE_SESSION -> closeOrCancel(p);
-                    case RECOVER -> startRecovery(p);
                     default -> {}
                 }
             }catch(Exception ignored){}
@@ -214,34 +205,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
         Runner r=runner;if(r!=null&&!r.finished)r.abortWithoutCommit();
         journal.clearError(p.id);journal.clearRecoverableStage(p.id);journal.clearActiveSession(p.id);
         journal.stage(p.id,SessionStage.READY);clearActive(p);if(overlay!=null)overlay.hide();
-    }
-
-    private void startRecovery(ProfileSpec p){
-        SessionStage previous=journal.stage(p.id);
-        journal.stage(p.id,SessionStage.RECOVERING);launchGemini();
-        observeRecovery(p,previous,0);
-    }
-
-    private void observeRecovery(ProfileSpec p,SessionStage previous,int attempt){
-        AccessibilityNodeInfo root=resolveGeminiRoot();
-        if(root==null && attempt<8){
-            handler.postDelayed(()->observeRecovery(p,previous,attempt+1),OBSERVE_FALLBACK_MS);
-            return;
-        }
-        boolean live=transport.isLiveActive(root);
-        RecoveryPlanner.RecoveryAction action=RecoveryPlanner.reconcile(previous,journal.recoverableStage(p.id),live);
-        switch(action){
-            case NONE -> finishReadyOutsideRunner(p);
-            case RETRY_START -> startRunner("CHAT".equals(journal.activeSessionMode(p.id))?Mode.START_CHAT:Mode.START_LIVE,p,journal.activeSessionMode(p.id));
-            case RESTORE_LIVE_OVERLAY -> {journal.stage(p.id,SessionStage.LIVE_ACTIVE);rememberActive(p);showOverlay(p);startWaitRunner(p,"LIVE");}
-            case RESTORE_CHAT_OVERLAY -> {journal.stage(p.id,SessionStage.CHAT_ACTIVE);rememberActive(p);showOverlay(p);startWaitRunner(p,"CHAT");}
-            case FINISH_CLOSE -> {
-                if(journal.activeSessionId(p.id).isEmpty())failWithoutRunner(p,"No existe SESSION_ID recuperable para cerrar con evidencia.",SessionStage.USER_ACTION_REQUIRED);
-                else startRunner(Mode.CLOSE,p,journal.activeSessionMode(p.id));
-            }
-            case ASK_USER -> failWithoutRunner(p,"La última ejecución quedó en un estado ambiguo. Abre Gemini o usa Diagnóstico y vuelve a Recuperar.",SessionStage.AMBIGUOUS_USER_REQUIRED);
-            case REQUIRE_BRIDGE_UPDATE -> failWithoutRunner(p,"Gemini cambió de interfaz y esta variante requiere una nueva regla de compatibilidad verificada.",SessionStage.APP_UPDATE_REQUIRED);
-        }
     }
 
     private void startRunner(Mode mode,ProfileSpec p,String sessionMode){
@@ -304,9 +267,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
         return capability+"|"+packageVersion(GEMINI_PACKAGE)+"|"
                 +packageVersion(GEMINI_HOST_PACKAGE);
     }
-    private String artemisRoutineKey(boolean registryKnown){
-        return artemisRoutineKey("canonical-nav")+"|"+(registryKnown?"known":"migration");
-    }
     private long packageVersion(String pkg){
         try{
             android.content.pm.PackageInfo info=getPackageManager().getPackageInfo(pkg,0);
@@ -333,7 +293,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
     }
 
     private enum Mode { START_LIVE, START_CHAT, WAIT, CLOSE }
-    private enum StartPhase { INIT, NAVIGATE, DELIVER_CONTEXT, WAIT_CONTEXT_READY, RENAME_CANONICAL, ACTIVATE_SESSION }
+    private enum StartPhase { INIT, ENSURE_FRESH_CHAT, DELIVER_CONTEXT, WAIT_CONTEXT_READY, ACTIVATE_SESSION }
     private enum ClosePhase { INIT, END_LIVE, STABILIZE_TRANSCRIPT, DELIVER_DEBRIEF, WAIT_DEBRIEF }
 
     private final class Runner {
@@ -341,17 +301,14 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private final ProfileSpec profile;
         private String sessionMode;
         private String sessionId;
-        private int retries,searchMisses,routeReplans;
-        private boolean finished,waitingForUserConsent,rebuildingConversation,searchAttempted;
-        private boolean searchQueryIssued,openingCanonical;
+        private int retries;
+        private boolean finished,waitingForUserConsent;
         private StartPhase startPhase=StartPhase.INIT;
         private ClosePhase closePhase=ClosePhase.INIT;
-        private ArtemisFlashAgent artemisAgent,artemisContextAgent,artemisRenameAgent,artemisLiveAgent;
-        private ArtemisFlashAgent artemisCloseAgent,artemisDebriefAgent;
+        private ArtemisFlashAgent artemisStartAgent,artemisCloseAgent;
         private boolean contextInitialized,contextWriteIssued,contextWriteVerified,contextSubmitPending,liveStartPending;
         private int contextSubmitAttempts,contextMissingPasses;
         private String contextPayload="";
-        private boolean renameSavePending;
         private boolean endLivePending;
         private boolean debriefInitialized,debriefWriteIssued,debriefWriteVerified,debriefSubmitPending;
         private int debriefSubmitAttempts,debriefMissingPasses;
@@ -361,7 +318,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private final long runnerStartedAtMs=System.currentTimeMillis();
         private long closeStartedAtMs;
         private String sessionEvidenceText="", debriefBaselineText="", contextBaselineText="";
-        private String canonicalTitle="",canonicalRoute="";
         private final Runnable pumpRunnable=this::pump;
 
         Runner(Mode mode,ProfileSpec p,String sessionMode){
@@ -374,9 +330,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         void abortWithoutCommit(){finished=true;handler.removeCallbacks(pumpRunnable);}
         void beginClose(){
             SessionStage current=journal.stage(profile.id);
-            SessionStage recoverable=journal.recoverableStage(profile.id);
-            boolean committedPath=isCloseableActiveStage(current)||isCloseableActiveStage(recoverable);
-            if(!committedPath){cancelToReady();return;}
+            if(!isCloseableActiveStage(current)){cancelToReady();return;}
             mode=Mode.CLOSE;closePhase=ClosePhase.INIT;retries=0;
             stableTranscriptSnapshot="";stableTranscriptObservations=0;
             closeStartedAtMs=System.currentTimeMillis();
@@ -438,7 +392,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private String newSessionId(){return "session-"+UUID.randomUUID().toString().replace("-","").substring(0,16);}
 
         private TransportObservation observe(){
-            return GeminiStateObserver.observe(root(),canonicalTitle);
+            return GeminiStateObserver.observe(root());
         }
 
         private boolean retryAdaptive(String reason){
@@ -458,240 +412,167 @@ public final class AleyonAccessibilityService extends AccessibilityService
                 case INIT -> {
                     sessionMode=mode==Mode.START_CHAT?"CHAT":"LIVE";
                     if(sessionId==null||sessionId.isEmpty())sessionId=newSessionId();
-                    canonicalTitle=conversations.title(profile);
-                    artemisAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,
-                            artemisRoutineKey(conversations.isKnown(profile.id)));
-                    artemisContextAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,
-                            artemisRoutineKey("context-delivery"));
-                    artemisRenameAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,
-                            artemisRoutineKey("canonical-rename"));
-                    artemisLiveAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,
-                            artemisRoutineKey("live-start"));
+                    artemisStartAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,
+                            artemisRoutineKey("start-session"));
                     journal.activeSession(profile.id,sessionId,sessionMode);
                     transition(profile,SessionStage.OPENING_SESSION_CHAT);
-                    launchGemini();moveStart(StartPhase.NAVIGATE);
+                    launchGemini();moveStart(StartPhase.ENSURE_FRESH_CHAT);
                 }
-                case NAVIGATE -> {
+                case ENSURE_FRESH_CHAT -> {
                     AccessibilityNodeInfo r=root();
-                    TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
-                    ArtemisFlashAgent.Action action=artemisAgent.next(
-                            o,conversations.isKnown(profile.id),searchAttempted,
-                            searchQueryIssued,searchMisses,openingCanonical,rebuildingConversation);
+                    TransportObservation o=GeminiStateObserver.observe(r);
+                    boolean blank=transport.isBlankConversation(r);
+                    ArtemisFlashAgent.Action action=artemisStartAgent.nextFreshChat(o,blank);
                     switch(action){
-                        case WAIT -> {
-                            if(o.state==TransportState.CONVERSATION_SEARCH&&searchQueryIssued)searchMisses++;
-                            schedule(OBSERVE_FALLBACK_MS);
-                        }
+                        case WAIT -> schedule(OBSERVE_FALLBACK_MS);
                         case BACK -> {
-                            if(!performGlobalAction(GLOBAL_ACTION_BACK)){
-                                artemisAgent.actionFailed();retryAdaptive("Gemini no aceptó volver desde el estado observado.");return;
+                            if(performGlobalAction(GLOBAL_ACTION_BACK)){
+                                artemisStartAgent.actionSucceeded(ArtemisFlashAgent.PHASE_FRESH_CHAT,o.state,action);
+                                schedule(0);return;
                             }
-                            artemisAgent.actionSucceeded(o.state,action);
-                            if(++routeReplans>MAX_ROUTE_REPLANS){failUpdate("El transporte agotó su presupuesto de recuperación semántica.");return;}
-                            schedule(OBSERVE_FALLBACK_MS);
-                        }
-                        case OPEN_CONVERSATION_LIST -> {
-                            if(transport.openConversationList(r)){
-                                artemisAgent.actionSucceeded(o.state,action);retries=0;schedule(OBSERVE_FALLBACK_MS);return;
-                            }
-                            artemisAgent.actionFailed();retryAdaptive("No pude abrir de forma semántica la lista de conversaciones de Gemini.");
-                        }
-                        case OPEN_VISIBLE_CANONICAL -> {
-                            if(transport.openCanonicalConversation(r,canonicalTitle)){
-                                artemisAgent.actionSucceeded(o.state,action);openingCanonical=true;
-                                rebuildingConversation=false;canonicalRoute=artemisAgent.isReplaying()?"artemis-replay":"artemis-learn";
-                                retries=0;schedule(OBSERVE_FALLBACK_MS);return;
-                            }
-                            artemisAgent.actionFailed();retryAdaptive("La conversación canónica estaba visible pero no pudo abrirse.");
-                        }
-                        case OPEN_SEARCH -> {
-                            if(transport.openConversationSearch(r)){
-                                artemisAgent.actionSucceeded(o.state,action);searchAttempted=true;
-                                searchQueryIssued=false;searchMisses=0;retries=0;schedule(OBSERVE_FALLBACK_MS);return;
-                            }
-                            artemisAgent.actionFailed();retryAdaptive("Aleyon conocía el chat canónico, pero Gemini no expuso búsqueda verificable.");
-                        }
-                        case TYPE_SEARCH_QUERY -> {
-                            if(transport.searchConversation(r,canonicalTitle)){
-                                artemisAgent.actionSucceeded(o.state,action);searchQueryIssued=true;
-                                searchMisses=0;retries=0;schedule(OBSERVE_FALLBACK_MS);return;
-                            }
-                            artemisAgent.actionFailed();retryAdaptive("No pude entregar la consulta al buscador semántico de conversaciones.");
+                            artemisStartAgent.actionFailed();
+                            retryAdaptive("Artemis no pudo volver a una superficie normal de Gemini.");
                         }
                         case CREATE_NORMAL_CHAT -> {
-                            conversations.markMissing(profile);
                             if(transport.createNormalConversation(r)){
-                                artemisAgent.actionSucceeded(o.state,action);rebuildingConversation=true;openingCanonical=false;
-                                canonicalRoute=artemisAgent.isReplaying()?"artemis-replay":"artemis-learn";
-                                retries=0;schedule(OBSERVE_FALLBACK_MS);return;
+                                artemisStartAgent.actionSucceeded(ArtemisFlashAgent.PHASE_FRESH_CHAT,o.state,action);
+                                schedule(0);return;
                             }
-                            artemisAgent.actionFailed();retryAdaptive("No pude crear un chat normal seguro para reconstruir la continuidad local.");
+                            artemisStartAgent.actionFailed();
+                            retryAdaptive("Artemis no pudo abrir un chat nuevo de Gemini.");
                         }
-                        case COMPLETE_REUSE -> {
-                            artemisAgent.complete();rebuildingConversation=false;openingCanonical=false;
-                            moveStart(StartPhase.DELIVER_CONTEXT);
-                        }
-                        case COMPLETE_REBUILD -> {
-                            artemisAgent.complete();rebuildingConversation=true;openingCanonical=false;
-                            moveStart(StartPhase.DELIVER_CONTEXT);
-                        }
+                        case COMPLETE_FRESH_CHAT -> moveStart(StartPhase.DELIVER_CONTEXT);
                         case FAIL_CLOSED -> {
-                            compatibility.recordFailure(profile.id,"adaptive-navigation-unknown | "+o.state+" | "+o.evidence);
-                            if(++routeReplans>MAX_ROUTE_REPLANS){failUpdate("Gemini cambió a una superficie que Aleyon no puede verificar con seguridad.");return;}
-                            schedule(OBSERVE_FALLBACK_MS);
+                            artemisStartAgent.actionFailed();
+                            retryAdaptive("Artemis no pudo verificar un chat nuevo y seguro de Gemini.");
                         }
-                        default -> failUpdate("Artemis propuso una acción no válida durante la navegación.");
+                        default -> failUpdate("Artemis propuso una acción no válida al preparar el chat.");
                     }
                 }
                 case DELIVER_CONTEXT -> {
-                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
                     if(!contextInitialized){
                         if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){
-                            retryAdaptive("La conversación seleccionada no llegó a un chat normal verificable.");return;
-                        }
-                        if(!rebuildingConversation){
-                            conversations.markVerified(profile,false);
-                            compatibility.recordSuccess(profile.id,canonicalRoute,o.evidence);
+                            retryAdaptive("Gemini todavía no expone un compositor normal verificable.");return;
                         }
                         transition(profile,SessionStage.CONTEXT_INJECTING);
                         contextBaselineText=transport.collectConversationText(r);
                         LearningLedger ledger=learning.load(profile.id);
                         contextPayload=prompts.contextCapsule(profile,ledger,sessionId,
-                                "LIVE".equals(sessionMode),rebuildingConversation);
+                                "LIVE".equals(sessionMode),true);
                         contextInitialized=true;
                     }
+
                     boolean prepared=transport.isContextPrepared(r,contextPayload);
                     String nowText=transport.collectConversationText(r);
                     boolean delivered=contextWriteIssued&&!prepared
                             && SessionTextDelta.delta(contextBaselineText,nowText).trim().length()>=20;
+
                     if(prepared&&contextWriteIssued&&!contextWriteVerified){
-                        artemisContextAgent.actionSucceeded(TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.WRITE_CONTEXT);
+                        artemisStartAgent.actionSucceeded(ArtemisFlashAgent.PHASE_CONTEXT,
+                                TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.WRITE_CONTEXT);
                         contextWriteVerified=true;
                     }
+
                     if(delivered){
                         if(contextSubmitPending){
-                            artemisContextAgent.actionSucceeded(TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.SUBMIT_CONTEXT);
-                            artemisContextAgent.complete();
-                        }else compatibility.recordFailure(profile.id,"context-submit-observed-without-automation-confirmation");
+                            artemisStartAgent.actionSucceeded(ArtemisFlashAgent.PHASE_CONTEXT,
+                                    TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.SUBMIT_CONTEXT);
+                        }else{
+                            compatibility.recordFailure(profile.id,
+                                    "context-submit-observed-without-automation-confirmation");
+                        }
                         contextSubmitPending=false;moveStart(StartPhase.WAIT_CONTEXT_READY);return;
                     }
+
                     if(contextWriteIssued&&!prepared){
                         contextMissingPasses++;
                         if(contextMissingPasses>=3){
-                            artemisContextAgent.actionFailed();contextWriteIssued=false;
+                            artemisStartAgent.actionFailed();contextWriteIssued=false;
                             contextWriteVerified=false;contextMissingPasses=0;
                         }
                     }else contextMissingPasses=0;
-                    ArtemisFlashAgent.Action action=artemisContextAgent.nextContext(
-                            o,prepared,false,contextWriteIssued,contextSubmitAttempts);
+
+                    ArtemisFlashAgent.Action action=artemisStartAgent.nextContext(
+                            o,prepared,false,contextWriteIssued,contextSubmitAttempts,false);
                     switch(action){
                         case WRITE_CONTEXT -> {
                             if(transport.writeContext(r,contextPayload)){
                                 contextWriteIssued=true;contextMissingPasses=0;schedule(0);return;
                             }
-                            artemisContextAgent.actionFailed();
-                            if(++contextSubmitAttempts>=3){failUpdate("Artemis no pudo escribir el contexto en un compositor verificable.");return;}
+                            artemisStartAgent.actionFailed();
+                            if(++contextSubmitAttempts>=3){
+                                failUpdate("Artemis no pudo escribir el contexto en Gemini.");return;
+                            }
                             schedule(OBSERVE_FALLBACK_MS);
                         }
                         case SUBMIT_CONTEXT -> {
                             contextSubmitAttempts++;
                             if(transport.submitPreparedContext(r)){contextSubmitPending=true;schedule(0);return;}
-                            artemisContextAgent.actionFailed();
-                            if(contextSubmitAttempts>=3){failUpdate("Artemis detectó el contexto escrito pero no pudo activar Enviar.");return;}
+                            artemisStartAgent.actionFailed();
+                            if(contextSubmitAttempts>=3){
+                                failUpdate("Artemis detectó el contexto escrito pero no pudo enviarlo.");return;
+                            }
                             schedule(OBSERVE_FALLBACK_MS);
                         }
                         case BACK -> {
-                            if(performGlobalAction(GLOBAL_ACTION_BACK)){schedule(0);return;}
-                            artemisContextAgent.actionFailed();failUpdate("Artemis no pudo normalizar Gemini antes de entregar el contexto.");
+                            if(performGlobalAction(GLOBAL_ACTION_BACK)){
+                                artemisStartAgent.actionSucceeded(ArtemisFlashAgent.PHASE_CONTEXT,o.state,action);
+                                schedule(0);return;
+                            }
+                            artemisStartAgent.actionFailed();
+                            failUpdate("Artemis no pudo volver al chat antes de entregar el contexto.");
                         }
                         case WAIT -> schedule(RESPONSE_OBSERVE_FALLBACK_MS);
-                        case COMPLETE_CONTEXT -> {artemisContextAgent.complete();moveStart(StartPhase.WAIT_CONTEXT_READY);}
+                        case COMPLETE_CONTEXT -> moveStart(StartPhase.WAIT_CONTEXT_READY);
                         case FAIL_CLOSED -> failUpdate("Artemis no pudo verificar una ruta segura para entregar el contexto.");
                         default -> failUpdate("Artemis propuso una acción no válida durante la entrega de contexto.");
                     }
                 }
                 case WAIT_CONTEXT_READY -> {
-                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
-                    if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;}
-                    if("LIVE".equals(sessionMode)&&!o.liveAvailable){schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;}
+                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
+                    if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){
+                        schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
+                    }
+                    if("LIVE".equals(sessionMode)&&!o.liveAvailable){
+                        schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
+                    }
                     journal.baselineText(profile.id,transport.collectConversationText(r));
                     transition(profile,SessionStage.CONTEXT_READY);
-                    moveStart(rebuildingConversation?StartPhase.RENAME_CANONICAL:StartPhase.ACTIVATE_SESSION);
-                }
-                case RENAME_CANONICAL -> {
-                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
-                    boolean actionVisible=transport.isRenameActionVisible(r);
-                    boolean editorVisible=transport.isRenameEditorVisible(r);
-                    boolean titlePrepared=transport.isCanonicalTitlePrepared(r,canonicalTitle);
-                    ArtemisFlashAgent.Action action=artemisRenameAgent.nextRename(
-                            o,actionVisible,editorVisible,titlePrepared,renameSavePending);
-                    switch(action){
-                        case OPEN_CHAT_OPTIONS -> {
-                            if(transport.openChatOptions(r)){
-                                artemisRenameAgent.actionSucceeded(o.state,action);schedule(0);return;
-                            }
-                            artemisRenameAgent.actionFailed();retryAdaptive("Artemis no pudo abrir las opciones del chat reconstruido.");
-                        }
-                        case CHOOSE_RENAME -> {
-                            if(transport.chooseRename(r)){
-                                artemisRenameAgent.actionSucceeded(o.state,action);schedule(0);return;
-                            }
-                            artemisRenameAgent.actionFailed();retryAdaptive("Artemis no pudo seleccionar Renombrar.");
-                        }
-                        case WRITE_TITLE -> {
-                            if(transport.setCanonicalTitle(r,canonicalTitle)){
-                                artemisRenameAgent.actionSucceeded(o.state,action);schedule(0);return;
-                            }
-                            artemisRenameAgent.actionFailed();retryAdaptive("Artemis no pudo preparar el nombre canónico.");
-                        }
-                        case SAVE_TITLE -> {
-                            if(transport.saveCanonicalTitle(r)){
-                                artemisRenameAgent.actionSucceeded(o.state,action);renameSavePending=true;schedule(0);return;
-                            }
-                            artemisRenameAgent.actionFailed();retryAdaptive("Artemis no pudo confirmar el nombre canónico.");
-                        }
-                        case COMPLETE_RENAME -> {
-                            artemisRenameAgent.complete();conversations.markVerified(profile,true);
-                            compatibility.recordSuccess(profile.id,"artemis-rename","canonical="+canonicalTitle);
-                            moveStart(StartPhase.ACTIVATE_SESSION);
-                        }
-                        case WAIT -> schedule(OBSERVE_FALLBACK_MS);
-                        case FAIL_CLOSED -> {
-                            artemisRenameAgent.actionFailed();retryAdaptive("Artemis no pudo resolver el renombrado canónico.");
-                        }
-                        default -> failUpdate("Artemis propuso una acción no válida durante el renombrado.");
-                    }
+                    moveStart(StartPhase.ACTIVATE_SESSION);
                 }
                 case ACTIVATE_SESSION -> {
                     if("CHAT".equals(sessionMode)){
+                        artemisStartAgent.complete();
                         transition(profile,SessionStage.CHAT_ACTIVE);rememberActive(profile);showOverlay(profile);
                         mode=Mode.WAIT;retries=0;return;
                     }
                     transition(profile,SessionStage.LIVE_STARTING);
-                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
-                    ArtemisFlashAgent.Action action=artemisLiveAgent.nextLive(o);
+                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
+                    ArtemisFlashAgent.Action action=artemisStartAgent.nextLive(o);
                     switch(action){
                         case START_LIVE -> {
-                            if(transport.startLive(r)){liveStartPending=true;schedule(0);return;}
-                            artemisLiveAgent.actionFailed();
+                            if(transport.startLive(r)){
+                                liveStartPending=true;
+                                artemisStartAgent.actionSucceeded(ArtemisFlashAgent.PHASE_LIVE,o.state,action);
+                                schedule(0);return;
+                            }
+                            artemisStartAgent.actionFailed();
                             if(++retries>=3){failUpdate("Artemis detectó Live pero no pudo activarlo.");return;}
                             schedule(OBSERVE_FALLBACK_MS);
                         }
                         case COMPLETE_LIVE -> {
-                            if(liveStartPending){
-                                artemisLiveAgent.actionSucceeded(TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.START_LIVE);
-                                artemisLiveAgent.complete();
-                            }
+                            artemisStartAgent.complete();
                             transition(profile,SessionStage.LIVE_ACTIVE);rememberActive(profile);showOverlay(profile);
                             mode=Mode.WAIT;retries=0;
                         }
                         case WAIT -> schedule(RESPONSE_OBSERVE_FALLBACK_MS);
                         case FAIL_CLOSED -> {
-                            artemisLiveAgent.actionFailed();
+                            artemisStartAgent.actionFailed();
                             if(++retries>=3){failUpdate("Artemis no pudo resolver una ruta segura hacia Gemini Live.");return;}
                             schedule(OBSERVE_FALLBACK_MS);
                         }
-                        default -> {artemisLiveAgent.actionFailed();failUpdate("Artemis propuso una acción no válida al iniciar Gemini Live.");}
+                        default -> {artemisStartAgent.actionFailed();failUpdate("Artemis propuso una acción no válida al iniciar Gemini Live.");}
                     }
                 }
             }
@@ -701,7 +582,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
             AccessibilityNodeInfo r=root();
             if(!transport.isGeminiSurface(r)){schedule(OBSERVE_FALLBACK_MS);return;}
             if("CHAT".equals(sessionMode))return;
-            TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+            TransportObservation o=GeminiStateObserver.observe(r);
             if(o.state==TransportState.LIVE_ACTIVE)return;
             if(o.state==TransportState.NORMAL_CHAT){beginClose();return;}
             schedule(OBSERVE_FALLBACK_MS);
@@ -712,12 +593,11 @@ public final class AleyonAccessibilityService extends AccessibilityService
             switch(closePhase){
                 case INIT -> {
                     transition(profile,SessionStage.CLOSING_SESSION);
-                    artemisCloseAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,artemisRoutineKey("live-end"));
-                    artemisDebriefAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,artemisRoutineKey("debrief-delivery"));
+                    artemisCloseAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,artemisRoutineKey("close-session"));
                     launchGemini();moveClose(ClosePhase.END_LIVE);
                 }
                 case END_LIVE -> {
-                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
                     if("CHAT".equals(sessionMode) && o.state==TransportState.NORMAL_CHAT){
                         moveClose(ClosePhase.STABILIZE_TRANSCRIPT);return;
                     }
@@ -731,8 +611,8 @@ public final class AleyonAccessibilityService extends AccessibilityService
                         }
                         case COMPLETE_END_LIVE -> {
                             if(endLivePending){
-                                artemisCloseAgent.actionSucceeded(TransportState.LIVE_ACTIVE,ArtemisFlashAgent.Action.END_LIVE);
-                                artemisCloseAgent.complete();
+                                artemisCloseAgent.actionSucceeded(ArtemisFlashAgent.PHASE_END_LIVE,
+                                        TransportState.LIVE_ACTIVE,ArtemisFlashAgent.Action.END_LIVE);
                             }
                             transition(profile,SessionStage.WAITING_TRANSCRIPT);
                             moveClose(ClosePhase.STABILIZE_TRANSCRIPT);
@@ -745,7 +625,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     }
                 }
                 case STABILIZE_TRANSCRIPT -> {
-                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
                     if(o.state!=TransportState.NORMAL_CHAT||!transport.hasComposer(r)){
                         schedule(OBSERVE_FALLBACK_MS);return;
                     }
@@ -760,7 +640,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     moveClose(ClosePhase.DELIVER_DEBRIEF);
                 }
                 case DELIVER_DEBRIEF -> {
-                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
                     if(!debriefInitialized){
                         if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){schedule(OBSERVE_FALLBACK_MS);return;}
                         transition(profile,SessionStage.ANALYZING);
@@ -773,38 +653,39 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     boolean delivered=debriefWriteIssued&&!prepared
                             && SessionTextDelta.delta(debriefBaselineText,now).trim().length()>=10;
                     if(prepared&&debriefWriteIssued&&!debriefWriteVerified){
-                        artemisDebriefAgent.actionSucceeded(TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.WRITE_CONTEXT);
+                        artemisCloseAgent.actionSucceeded(ArtemisFlashAgent.PHASE_DEBRIEF,
+                                TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.WRITE_CONTEXT);
                         debriefWriteVerified=true;
                     }
                     if(delivered){
                         if(debriefSubmitPending){
-                            artemisDebriefAgent.actionSucceeded(TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.SUBMIT_CONTEXT);
-                            artemisDebriefAgent.complete();
+                            artemisCloseAgent.actionSucceeded(ArtemisFlashAgent.PHASE_DEBRIEF,
+                                    TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.SUBMIT_CONTEXT);
                         }
                         moveClose(ClosePhase.WAIT_DEBRIEF);return;
                     }
                     if(debriefWriteIssued&&!prepared){
                         debriefMissingPasses++;
                         if(debriefMissingPasses>=3){
-                            artemisDebriefAgent.actionFailed();debriefWriteIssued=false;
+                            artemisCloseAgent.actionFailed();debriefWriteIssued=false;
                             debriefWriteVerified=false;debriefMissingPasses=0;
                         }
                     }else debriefMissingPasses=0;
-                    ArtemisFlashAgent.Action action=artemisDebriefAgent.nextContext(
-                            o,prepared,false,debriefWriteIssued,debriefSubmitAttempts);
+                    ArtemisFlashAgent.Action action=artemisCloseAgent.nextContext(
+                            o,prepared,false,debriefWriteIssued,debriefSubmitAttempts,true);
                     switch(action){
                         case WRITE_CONTEXT -> {
                             if(transport.writeContext(r,debriefPayload)){
                                 debriefWriteIssued=true;debriefMissingPasses=0;schedule(0);return;
                             }
-                            artemisDebriefAgent.actionFailed();
+                            artemisCloseAgent.actionFailed();
                             if(++debriefSubmitAttempts>=3){failUpdate("Artemis no pudo preparar el debrief en Gemini.");return;}
                             schedule(OBSERVE_FALLBACK_MS);
                         }
                         case SUBMIT_CONTEXT -> {
                             debriefSubmitAttempts++;
                             if(transport.submitPreparedContext(r)){debriefSubmitPending=true;schedule(0);return;}
-                            artemisDebriefAgent.actionFailed();
+                            artemisCloseAgent.actionFailed();
                             if(debriefSubmitAttempts>=3){failUpdate("Artemis no pudo enviar el debrief a Gemini.");return;}
                             schedule(OBSERVE_FALLBACK_MS);
                         }
@@ -829,6 +710,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     journal.sessionHints(profile.id,report.nextObjective,"");
                     try{profile.sessions++;journal.saveProfile(profile);}catch(Exception ignored){}
                     NotificationHelper.postSessionClosed(AleyonAccessibilityService.this,profile.id,profile.label,summary);
+                    artemisCloseAgent.complete();
                     finishReady();
                 }
             }
@@ -841,19 +723,19 @@ public final class AleyonAccessibilityService extends AccessibilityService
         }
         private void failUpdate(String msg){
             recordDiagnostic(profile,"APP_UPDATE_REQUIRED",msg);
-            SessionStage safe=journal.stage(profile.id);journal.recoverableStage(profile.id,safe);
+            journal.clearRecoverableStage(profile.id);
             journal.appendErrorHistory(profile.id,msg,SessionStage.APP_UPDATE_REQUIRED);
             journal.error(profile.id,msg,SessionStage.APP_UPDATE_REQUIRED);finished=true;
             if(overlay!=null)overlay.markNeedsAttention();launchAleyon();
         }
 
         private void fail(String msg){
-            recordDiagnostic(profile,"FAIL",msg);SessionStage safe=journal.stage(profile.id);journal.recoverableStage(profile.id,safe);
+            recordDiagnostic(profile,"FAIL",msg);journal.clearRecoverableStage(profile.id);
             journal.appendErrorHistory(profile.id,msg,SessionStage.ERROR);journal.error(profile.id,msg,SessionStage.ERROR);
             finished=true;if(overlay!=null)overlay.markNeedsAttention();launchAleyon();
         }
         private void failAmbiguous(String msg){
-            recordDiagnostic(profile,"AMBIGUOUS",msg);SessionStage safe=journal.stage(profile.id);journal.recoverableStage(profile.id,safe);
+            recordDiagnostic(profile,"AMBIGUOUS",msg);journal.clearRecoverableStage(profile.id);
             journal.appendErrorHistory(profile.id,msg,SessionStage.AMBIGUOUS_USER_REQUIRED);
             journal.error(profile.id,msg,SessionStage.AMBIGUOUS_USER_REQUIRED);finished=true;
             if(overlay!=null)overlay.markNeedsAttention();launchAleyon();
