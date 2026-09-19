@@ -1,0 +1,58 @@
+name: Refresh source integrity
+
+on:
+  push:
+    branches: [ "develop/artemis-transport" ]
+    paths:
+      - "app/**"
+      - "tests/**"
+      - "scripts/**"
+      - "docs/**"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "SOURCE_OF_TRUTH.json"
+      - "VERSION"
+      - "build.gradle"
+      - "settings.gradle"
+      - "COMPILAR_APK_WINDOWS.bat"
+      - "INSTALAR_APK_POR_USB.bat"
+      - ".gitignore"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-integrity-develop-artemis
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Regenerate manifest and run package QA
+        run: python scripts/package_release.py
+      - name: Commit manifest only if source QA passed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MANIFEST_SHA256.txt
+          if git diff --cached --quiet; then
+            echo "Manifest already current."
+            exit 0
+          fi
+          git commit -m "chore: refresh source integrity manifest"
+          git push origin HEAD:develop/artemis-transport
