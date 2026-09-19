@@ -12,7 +12,7 @@ Gemini provides reasoning, conversational responses, Live voice, native file ana
 
 ## Control plane vs data plane
 
-Aleyon/Artemis-derived transport is a **control plane**. It decides which semantic state must be reached and verifies that state.
+The embedded Artemis transport is the **control plane**. Bridge vendors a narrow Android-safe subset adapted from Google Artemis (Apache-2.0): multi-window root recovery from the Artemis accessibility helper plus a Flash-style reactive action loop with bounded routine memory. Bridge gives this runtime an intent; Artemis observes the current Gemini surface, chooses one allow-listed action, executes it, observes again and either replays or relearns the route.
 
 Android/Gemini is the **data plane** for media:
 
@@ -33,7 +33,10 @@ Learning continuity
   ContextCapsuleBuilder
   LearningLedger
         ↓
-Adaptive transport
+Embedded Artemis transport
+  ArtemisRootResolver
+  ArtemisFlashAgent
+  ArtemisRoutineMemory
   GeminiStateObserver
   ConversationRegistry
   CompatibilityMemory
@@ -45,7 +48,7 @@ Narrow provider adapter
 Official Gemini Android app
 ```
 
-`GeminiUi` is the only provider-specific accessibility adapter. `AleyonAccessibilityService` consumes semantic states/actions and must not encode one device's selector sequence.
+`GeminiUi` is the provider-specific capability adapter. `AleyonAccessibilityService` does not encode a navigation script: it delegates canonical-chat navigation to `ArtemisFlashAgent`, which re-observes after every action. `ArtemisRoutineMemory` caches successful semantic state/action sequences by Gemini/Google package-version signature. A matching routine is replayed; any state or action mismatch invalidates it and the Flash agent falls back to semantic exploration, learns the new successful sequence and stores it.
 
 ## Canonical conversation lifecycle
 
@@ -79,7 +82,7 @@ Untrusted document content is never allowed to become an Artemis shell/tool argu
 
 ## Compatibility immune memory
 
-`CompatibilityMemory` contains route/failure evidence only, never learner transcript or pedagogy. Host-side Artemis can explore a changed Gemini build; only the smallest verified semantic capability is promoted to `GeminiUi`/`GeminiConversationTransport`.
+`CompatibilityMemory` contains route/failure evidence only, never learner transcript or pedagogy. `ArtemisRoutineMemory` separately stores successful navigation routines only; it contains no learner content. When Gemini changes, a mismatched routine is discarded and the embedded Flash loop relearns from current semantic observations. A completely opaque/unknown surface still fails closed; host-side full Artemis remains the escalation path for variants that no longer expose enough accessibility semantics.
 
 ## Session close
 
