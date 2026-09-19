@@ -847,6 +847,27 @@ public final class GeminiUi {
         return conversationTitleNode(root, title) != null;
     }
 
+    /** True when Gemini exposes a chat-level rename action. */
+    public static boolean isRenameActionVisible(AccessibilityNodeInfo root) {
+        return findAny(root, "Cambiar nombre", "Renombrar", "Rename") != null;
+    }
+
+    /** True when a rename editor is visible rather than the normal chat composer. */
+    public static boolean isRenameEditorVisible(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        AccessibilityNodeInfo editable=focusedOrOnlyEditable(root);
+        if (editable == null) return false;
+        boolean save=findAny(root, "Guardar", "Save", "Listo", "Done") != null;
+        return save && !isConversationSearchOpen(root);
+    }
+
+    public static boolean isConversationTitlePrepared(AccessibilityNodeInfo root,String title) {
+        if (!isRenameEditorVisible(root) || title == null) return false;
+        AccessibilityNodeInfo editable=focusedOrOnlyEditable(root);
+        CharSequence text=editable==null?null:editable.getText();
+        return text!=null && title.trim().equals(text.toString().trim());
+    }
+
     /** Chat-level rename command. Exact only: never match conversation content. */
     public static boolean clickRenameConversation(AccessibilityNodeInfo root) {
         return clickAnyExact(root, "Cambiar nombre", "Renombrar", "Rename");
