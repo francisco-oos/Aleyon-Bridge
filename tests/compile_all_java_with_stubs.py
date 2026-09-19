@@ -56,7 +56,7 @@ package android.content;
 import java.util.Set;
 public interface SharedPreferences {
  String getString(String k,String d); long getLong(String k,long d); boolean getBoolean(String k,boolean d);
- Set<String> getStringSet(String k,Set<String> d); Editor edit();
+ Set<String> getStringSet(String k,Set<String> d); boolean contains(String k); Editor edit();
  interface Editor {
    Editor putString(String k,String v); Editor putLong(String k,long v); Editor putBoolean(String k,boolean v);
    Editor putStringSet(String k,Set<String> v); Editor remove(String k); void apply(); boolean commit();
@@ -85,10 +85,11 @@ package android.content.pm; import android.content.Intent;
 public class PackageManager {
  public static final int PERMISSION_GRANTED=0, PERMISSION_DENIED=-1;
  public static class NameNotFoundException extends Exception{}
- public Object getPackageInfo(String p,int f) throws NameNotFoundException {return null;}
+ public PackageInfo getPackageInfo(String p,int f) throws NameNotFoundException {return null;}
  public Intent getLaunchIntentForPackage(String p){return null;}
 }
 ''',
+"android/content/pm/PackageInfo.java": '''package android.content.pm; public class PackageInfo { public int versionCode=1; public long getLongVersionCode(){return versionCode;} }''',
 "android/Manifest.java": '''
 package android;
 public final class Manifest {
@@ -103,6 +104,7 @@ public class Build {
  public static class VERSION { public static final int SDK_INT=34; }
 }
 ''',
+"android/os/SystemClock.java": '''package android.os; public class SystemClock { public static void sleep(long ms){} }''',
 "android/app/PendingIntent.java": '''
 package android.app;
 import android.content.Context; import android.content.Intent;
@@ -196,21 +198,21 @@ public class AlertDialog {
 "android/widget/Toast.java": '''package android.widget; import android.content.Context; public class Toast { public static final int LENGTH_SHORT=0; public static Toast makeText(Context c,CharSequence s,int d){return new Toast();} public void show(){} }''',
 "android/accessibilityservice/AccessibilityService.java": '''
 package android.accessibilityservice; import android.content.Context; import android.view.accessibility.*;
-public abstract class AccessibilityService extends Context { public static final int GLOBAL_ACTION_BACK=1; protected void onServiceConnected(){} public abstract void onAccessibilityEvent(AccessibilityEvent e); public abstract void onInterrupt(); public void onDestroy(){} public AccessibilityNodeInfo getRootInActiveWindow(){return null;} public java.util.List<AccessibilityWindowInfo> getWindows(){return java.util.Collections.emptyList();} public boolean performGlobalAction(int action){return true;} }
+public abstract class AccessibilityService extends Context { public static final int GLOBAL_ACTION_BACK=1; protected void onServiceConnected(){} public abstract void onAccessibilityEvent(AccessibilityEvent e); public abstract void onInterrupt(); public void onDestroy(){} public AccessibilityNodeInfo getRootInActiveWindow(){return null;} public java.util.List<AccessibilityWindowInfo> getWindows(){return java.util.Collections.emptyList();} public AccessibilityNodeInfo findFocus(int focus){return null;} public boolean performGlobalAction(int action){return true;} }
 ''',
 "android/view/accessibility/AccessibilityEvent.java": '''package android.view.accessibility; public class AccessibilityEvent { public static final int TYPE_WINDOWS_CHANGED=4194304; public CharSequence getPackageName(){return null;} public int getEventType(){return 0;} }''',
 "android/view/accessibility/AccessibilityWindowInfo.java": '''
 package android.view.accessibility;
 public class AccessibilityWindowInfo {
  public static final int TYPE_APPLICATION=1;
- public AccessibilityNodeInfo getRoot(){return null;} public int getType(){return TYPE_APPLICATION;}
+ public AccessibilityNodeInfo getRoot(){return null;} public AccessibilityNodeInfo getRoot(int flags){return null;} public int getType(){return TYPE_APPLICATION;} public int getLayer(){return 0;}
  public boolean isActive(){return false;} public boolean isFocused(){return false;} public CharSequence getTitle(){return null;}
 }
 ''',
 "android/view/accessibility/AccessibilityNodeInfo.java": '''
 package android.view.accessibility; import android.os.Bundle; import android.graphics.Rect;
 public class AccessibilityNodeInfo {
- public static final int ACTION_SCROLL_FORWARD=4096,ACTION_SCROLL_BACKWARD=8192,ACTION_CLICK=16,ACTION_SET_TEXT=2097152;
+ public static final int ACTION_SCROLL_FORWARD=4096,ACTION_SCROLL_BACKWARD=8192,ACTION_CLICK=16,ACTION_SET_TEXT=2097152,FOCUS_INPUT=1,FOCUS_ACCESSIBILITY=2;
  public static final String ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE="ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE";
  public CharSequence getText(){return null;} public CharSequence getContentDescription(){return null;} public CharSequence getHintText(){return null;} public CharSequence getPackageName(){return null;} public CharSequence getClassName(){return null;} public String getViewIdResourceName(){return null;}
  public int getChildCount(){return 0;} public AccessibilityNodeInfo getChild(int i){return null;} public AccessibilityNodeInfo getParent(){return null;}
