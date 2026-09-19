@@ -11,11 +11,7 @@ public final class PromptRepository {
     public PromptRepository(Context c){context=c.getApplicationContext();}
 
     public String contextCapsule(ProfileSpec p, LearningLedger ledger, String sessionId, boolean liveMode){
-        return ContextCapsuleBuilder.build(p,ledger,sessionId,liveMode,false);
-    }
-
-    public String contextCapsule(ProfileSpec p, LearningLedger ledger, String sessionId, boolean liveMode, boolean reconstructConversation){
-        return ContextCapsuleBuilder.build(p,ledger,sessionId,liveMode,reconstructConversation);
+        return ContextCapsuleBuilder.build(p,ledger,sessionId,liveMode);
     }
 
     /**
