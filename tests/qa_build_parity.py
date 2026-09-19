@@ -8,6 +8,7 @@ def check(c,m):
 def read(rel): return (ROOT/rel).read_text(encoding='utf-8',errors='replace')
 sh=read('tests/run_core_tests.sh'); bat=read('tests/run_core_tests.bat')
 ps=read('scripts/build_windows.ps1'); qawf=read('.github/workflows/qa.yml'); buildwf=read('.github/workflows/build-apk.yml')
+verifier=read('tests/verify_package.py'); packager=read('scripts/package_release.py')
 
 def java_names(text):
     return set(re.findall(r'core[\\/]([A-Za-z0-9_]+\.java)',text))
@@ -36,6 +37,12 @@ if m: check(not m.group(1).strip(),'unexpected external Android dependency intro
 root_gradle=read('build.gradle')
 check("version '8.7.3'" in root_gradle,'Android Gradle Plugin must stay explicitly pinned for this candidate')
 check('+' not in root_gradle,'floating Gradle plugin version detected')
+
+# Integrity/preflight must be portable across Windows CRLF checkouts and Android Studio local files.
+for token in ['canonical_bytes', "'.gradle'", "'.idea'", "'gradlew.bat'"]:
+    check(token in verifier,f'Windows-safe package verifier missing {token}')
+check('canonical_bytes' in packager and 'z.writestr(rel,canonical_bytes(p))' in packager,
+      'source packager is not line-ending canonical across operating systems')
 
 if errors:
     print('FAIL build parity QA'); [print(' -',e) for e in errors]; sys.exit(1)
