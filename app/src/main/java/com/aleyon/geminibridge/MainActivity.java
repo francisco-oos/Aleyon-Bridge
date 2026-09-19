@@ -1,6 +1,5 @@
 package com.aleyon.geminibridge;
 
-import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
@@ -10,7 +9,6 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
@@ -78,14 +76,11 @@ public final class MainActivity extends Activity {
         webView.addJavascriptInterface(new AndroidBridge(this),"AndroidBridge");
         webView.loadUrl("file:///android_asset/index.html");
         setContentView(webView);
-        requestNotificationPermissionIfNeeded();
-    }
-
-    private void requestNotificationPermissionIfNeeded(){
-        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                !=PackageManager.PERMISSION_GRANTED){
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},1001);
-        }
+        // Session-summary notifications are optional. Never open a runtime
+        // permission dialog during startup: an already-enabled accessibility
+        // overlay can make Android security dialogs reject touches. If the
+        // user has not granted notifications, NotificationHelper simply skips
+        // the optional summary notification without affecting Bridge.
     }
 
     @Override protected void onResume(){
