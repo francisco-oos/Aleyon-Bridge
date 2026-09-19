@@ -94,6 +94,7 @@ def run():
     if len({p.title for p in profiles})!=len(profiles): errors.append('canonical title collision')
 
     total_sessions=0; material_sessions=0; rebuilds=0; fail_closed=0
+    direct_migrations=0; recovery_searches=0
     for pi,p in enumerate(profiles):
         for session in range(6):
             total_sessions+=1
@@ -109,6 +110,12 @@ def run():
                     errors.append(f'provider deletion mutated local memory: {p.lang}')
 
             if not p.provider_chat_exists:
+                # First canonical build for a migrated profile is direct: no blind search.
+                # A later provider deletion is searched once only because Bridge verified it before.
+                if p.rebuilds==0:
+                    direct_migrations+=1
+                else:
+                    recovery_searches+=1
                 p.provider_chat_exists=True; p.rebuilds+=1; rebuilds+=1
             else:
                 p.compatibility_success+=1
@@ -152,12 +159,17 @@ def run():
         accepted=uri.startswith('content://') and 0<size<=max_bytes
         if accepted: errors.append(f'adversarial material accepted: {name}')
 
+    if direct_migrations!=len(profiles):
+        errors.append(f'expected one direct migration per profile, got {direct_migrations}')
+    if recovery_searches!=len(profiles):
+        errors.append(f'expected one bounded recovery search per deleted verified chat, got {recovery_searches}')
+
     if errors:
         print('FAIL exhaustive contract simulation')
         for e in errors[:100]: print(' -',e)
         if len(errors)>100: print(f' ... {len(errors)-100} more')
         return 1
-    print(f'PASS exhaustive contract simulation: profiles={len(profiles)}, sessions={total_sessions}, material_sessions={material_sessions}, forced_rebuilds={rebuilds}, fail_closed_probes={fail_closed}, version_families={len(VERSION_FAMILIES)}')
+    print(f'PASS exhaustive contract simulation: profiles={len(profiles)}, sessions={total_sessions}, material_sessions={material_sessions}, forced_rebuilds={rebuilds}, direct_migrations={direct_migrations}, recovery_searches={recovery_searches}, fail_closed_probes={fail_closed}, version_families={len(VERSION_FAMILIES)}')
     return 0
 
 if __name__=='__main__': sys.exit(run())
