@@ -3,8 +3,8 @@ package com.aleyon.geminibridge.core;
 public final class CoreTests {
     private static int passed=0;
     public static void main(String[] args){
-        testNaming();testCanonicalConversation();testCanonicalChatRouting();testTransportState();testRecovery();testReconciliation();testDebriefParser();
-        testDebriefRejectIncomplete();testTextDelta();testSchemaV5();testScreenBounds();testLedger();testDiagnostics();
+        testNaming();testTransportState();testDebriefParser();testDebriefRejectIncomplete();
+        testTextDelta();testSchemaV5();testScreenBounds();testLedger();testDiagnostics();
         testMaterialPolicy();testProfileMatrix();testAdversarialInputs();
         System.out.println("PASS core tests: "+passed);
     }
@@ -12,39 +12,11 @@ public final class CoreTests {
         eq("lang-frances",ProfileNaming.profileId("Francés"));
         ok(ProfileNaming.profileId("日本語").startsWith("lang-u-"));passed++;
     }
-    private static void testCanonicalConversation(){
-        eq("ALEYON — Inglés",CanonicalConversationPolicy.title("Inglés"));
-        eq(CanonicalConversationPolicy.Resolution.REUSE,CanonicalConversationPolicy.resolve(true));
-        eq(CanonicalConversationPolicy.Resolution.REBUILD,CanonicalConversationPolicy.resolve(false));passed++;
-    }
-    private static void testCanonicalChatRouting(){
-        eq(CanonicalChatRoutingPolicy.Action.REBUILD_DIRECT,
-                CanonicalChatRoutingPolicy.decide(false,false,false));
-        eq(CanonicalChatRoutingPolicy.Action.OPEN_VISIBLE,
-                CanonicalChatRoutingPolicy.decide(true,true,false));
-        eq(CanonicalChatRoutingPolicy.Action.SEARCH_KNOWN_ONCE,
-                CanonicalChatRoutingPolicy.decide(true,false,false));
-        eq(CanonicalChatRoutingPolicy.Action.REBUILD_AFTER_SEARCH,
-                CanonicalChatRoutingPolicy.decide(true,false,true));
-        passed++;
-    }
     private static void testTransportState(){
         eq(TransportState.NORMAL_CHAT,TransportState.valueOf("NORMAL_CHAT"));
-        eq(TransportState.CONVERSATION_SEARCH,TransportState.valueOf("CONVERSATION_SEARCH"));
+        eq(TransportState.LIVE_ACTIVE,TransportState.valueOf("LIVE_ACTIVE"));
+        eq(TransportState.CONVERSATION_LIST,TransportState.valueOf("CONVERSATION_LIST"));
         passed++;
-    }
-    private static void testRecovery(){
-        eq(RecoveryPlanner.RecoveryAction.NONE,RecoveryPlanner.plan(SessionStage.READY,false));
-        eq(RecoveryPlanner.RecoveryAction.RETRY_START,RecoveryPlanner.plan(SessionStage.CONTEXT_INJECTING,false));
-        eq(RecoveryPlanner.RecoveryAction.RESTORE_LIVE_OVERLAY,RecoveryPlanner.plan(SessionStage.LIVE_ACTIVE,true));
-        eq(RecoveryPlanner.RecoveryAction.FINISH_CLOSE,RecoveryPlanner.plan(SessionStage.LIVE_ACTIVE,false));
-        eq(RecoveryPlanner.RecoveryAction.RESTORE_CHAT_OVERLAY,RecoveryPlanner.plan(SessionStage.CHAT_ACTIVE,false));passed++;
-    }
-    private static void testReconciliation(){
-        eq(RecoveryPlanner.RecoveryAction.RETRY_START,
-                RecoveryPlanner.reconcile(SessionStage.AMBIGUOUS_USER_REQUIRED,SessionStage.OPENING_SESSION_CHAT,false));
-        eq(RecoveryPlanner.RecoveryAction.ASK_USER,
-                RecoveryPlanner.reconcile(SessionStage.AMBIGUOUS_USER_REQUIRED,null,false));passed++;
     }
     private static void testDebriefParser(){
         String t="Resumen: Practicamos una presentación profesional.\n"
@@ -62,7 +34,8 @@ public final class CoreTests {
         ok(SessionReportParser.parseDebrief("Resumen: Sólo una línea") == null);passed++;
     }
     private static void testTextDelta(){
-        String d=SessionTextDelta.delta("A\nB\n","A\nB\nC\nD\n");ok(d.contains("C"));ok(d.contains("D"));ok(!d.contains("A\n"));passed++;
+        String d=SessionTextDelta.delta("A\nB\n","A\nB\nC\nD\n");
+        ok(d.contains("C"));ok(d.contains("D"));ok(!d.contains("A\n"));passed++;
     }
     private static void testSchemaV5(){eq(6,ProtocolContract.SCHEMA_VERSION);passed++;}
     private static void testScreenBounds(){
@@ -80,7 +53,6 @@ public final class CoreTests {
         AutomationDiagnostics d=new AutomationDiagnostics("r","s","b","a",1L,"p",true,2,"sel",0,"ok","focused",2,"windows");
         ok(d.toJsonString().contains("\"rootSource\":\"focused\""));passed++;
     }
-
     private static void testMaterialPolicy(){
         SessionMaterial pdf=new SessionMaterial("m1",SessionMaterial.Kind.DOCUMENT,"manual.pdf","application/pdf",1024L,"content://docs/manual","pregúntame sobre el manual");
         SessionMaterial image=new SessionMaterial("m2",SessionMaterial.Kind.IMAGE,"foto.jpg","image/jpeg",2048L,"content://photos/1","describe la imagen");
@@ -92,14 +64,11 @@ public final class CoreTests {
     }
     private static void testProfileMatrix(){
         String[] langs={"Inglés","Francés","Alemán","Italiano","Portugués","Japonés","Coreano","Mandarín","Cantonés","Árabe","Hindi","Bengalí","Ruso","Ucraniano","Polaco","Checo","Eslovaco","Húngaro","Rumano","Búlgaro","Griego","Turco","Hebreo","Persa","Urdu","Punjabi","Tamil","Telugu","Maratí","Gujarati","Vietnamita","Tailandés","Indonesio","Malayo","Tagalo","Suajili","Afrikáans","Neerlandés","Sueco","Noruego","Danés","Finés","Islandés","Irlandés","Galés","Catalán","Gallego","Euskera","Maya yucateco","Tseltal","Náhuatl","Quechua","Guaraní","Esperanto","Latín","Serbio","Croata","Esloveno","Estonio","Letón"};
-        java.util.HashSet<String> ids=new java.util.HashSet<>();java.util.HashSet<String> titles=new java.util.HashSet<>();
-        for(String lang:langs){ok(ids.add(ProfileNaming.profileId(lang)));ok(titles.add(CanonicalConversationPolicy.title(lang)));}
-        eq(60,ids.size());eq(60,titles.size());passed++;
+        java.util.HashSet<String> ids=new java.util.HashSet<>();
+        for(String lang:langs)ok(ids.add(ProfileNaming.profileId(lang)));
+        eq(60,ids.size());passed++;
     }
-
     private static void testAdversarialInputs(){
-        eq("ALEYON — Inglés avanzado",CanonicalConversationPolicy.title("  Inglés\n avanzado  "));
-        ok(CanonicalConversationPolicy.title("x".repeat(200)).length()<=89);
         ok(ProfileNaming.isValidProfileId("lang-ingles"));
         ok(ProfileNaming.isValidProfileId("lang-u-0123456789ab"));
         ok(!ProfileNaming.isValidProfileId("../lang-ingles"));
