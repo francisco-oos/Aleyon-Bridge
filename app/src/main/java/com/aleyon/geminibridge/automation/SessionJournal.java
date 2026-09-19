@@ -58,7 +58,11 @@ public final class SessionJournal {
             String raw=prefs.getString("stage:"+id,SessionStage.READY.name());
             // Legacy builds could persist RECOVERING. Recovery is no longer a
             // product state; old installs migrate that value to READY.
-            if("RECOVERING".equals(raw))return SessionStage.READY;
+            if("RECOVERING".equals(raw)){
+                prefs.edit().putString("stage:"+id,SessionStage.READY.name())
+                        .remove("recoverable_stage:"+id).apply();
+                return SessionStage.READY;
+            }
             return SessionStage.valueOf(raw);
         }catch(Exception e){return SessionStage.ERROR;}
     }
