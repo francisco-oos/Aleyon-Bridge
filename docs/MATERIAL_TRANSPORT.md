@@ -1,14 +1,14 @@
 # Material transport — control plane vs data plane
 
 **Date:** 2026-09-18  
-**Applies to:** `0.5.0-alpha2`
+**Applies to:** `0.5.0-alpha3`
 
 ## Decision
 
 When the user wants Gemini to study a PDF, document, spreadsheet, image, audio, video or similar item, Bridge/Artemis-derived transport does **not** need to ingest the bytes.
 
 - Bridge supplies learner context, study objective and continuity.
-- The adaptive transport gets Gemini to the canonical conversation and may open Gemini's native attachment surface.
+- The adaptive transport keeps the current fresh Gemini session verified and may open Gemini's native attachment surface.
 - Android's native picker/user selection supplies the file reference.
 - Gemini reads/analyzes the actual content.
 - Bridge stores only the learning result/evidence needed for future continuity.
@@ -29,7 +29,7 @@ Official references:
 - https://support.google.com/gemini/answer/14903178?co=GENIE.Platform%3DAndroid&hl=es-MX
 - https://support.google.com/gemini/answer/15274899?co=GENIE.Platform%3DAndroid&hl=es
 
-## Production boundary in alpha2
+## Production boundary in alpha3
 
 Implemented:
 - metadata-only `SessionMaterial`;
