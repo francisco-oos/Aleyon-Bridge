@@ -17,6 +17,9 @@
 - Field hardening on `develop/artemis-transport`: migrated profiles with no canonical registry entry now rebuild directly instead of searching blindly; search is reserved for a previously verified canonical chat.
 - Adds `CONVERSATION_SEARCH` as a distinct transport state, removes the arbitrary-EditText composer fallback, rejects the search query itself as a conversation result, and adds bounded replan/runtime watchdogs to prevent frozen automation loops.
 - Adds regression coverage derived from the real Gemini passive probe where `Buscar chats` was previously misclassified as `CHAT`.
+- Replaces the interim custom navigation planner with a narrow embedded derivative of Google Artemis: multi-window root resolution from the Android helper, Flash-style observe→act→observe execution, and persistent routine replay/invalidation/relearning.
+- Learned routines are keyed by installed Gemini/Google package-version signature and are discarded immediately when observed state or action execution stops matching.
+- Explicitly excludes Artemis `CommandServer`, gesture injection, screenshots, unrestricted ADB/shell and package-control surfaces from the APK.
 
 ## 0.5.0-alpha1 — adaptive transport / canonical Gemini conversation
 
