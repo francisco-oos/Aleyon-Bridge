@@ -444,7 +444,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
                         contextBaselineText=transport.collectConversationText(r);
                         LearningLedger ledger=learning.load(profile.id);
                         contextPayload=prompts.contextCapsule(profile,ledger,sessionId,
-                                "LIVE".equals(sessionMode),true);
+                                "LIVE".equals(sessionMode));
                         contextInitialized=true;
                     }
 
