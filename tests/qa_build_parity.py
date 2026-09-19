@@ -14,8 +14,10 @@ def java_names(text):
     return set(re.findall(r'core[\\/]([A-Za-z0-9_]+\.java)',text))
 sh_java=java_names(sh); bat_java=java_names(bat)
 check(sh_java==bat_java,f'Windows/Linux core javac source drift: only-sh={sorted(sh_java-bat_java)}, only-bat={sorted(bat_java-sh_java)}')
-for required in ['CanonicalConversationPolicy.java','CanonicalChatRoutingPolicy.java','TransportState.java','SessionMaterial.java','MaterialHandoffPolicy.java']:
-    check(required in sh_java and required in bat_java,f'new core class missing from one runner: {required}')
+for required in ['TransportState.java','SessionMaterial.java','MaterialHandoffPolicy.java']:
+    check(required in sh_java and required in bat_java,f'core class missing from one runner: {required}')
+for obsolete in ['CanonicalConversationPolicy.java','CanonicalChatRoutingPolicy.java','RecoveryPlanner.java']:
+    check(obsolete not in sh_java and obsolete not in bat_java,f'obsolete core class returned to a runner: {obsolete}')
 
 qa_steps=['simulate_matrix.py','qa_static.py','qa_interactions.py','qa_security.py','compile_all_java_with_stubs.py']
 for step in qa_steps:
