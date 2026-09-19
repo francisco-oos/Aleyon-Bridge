@@ -122,16 +122,6 @@ public final class SessionJournal {
     public void clearError(String id){prefs.edit().remove("error:"+id).apply();}
     public String lastError(String id){return prefs.getString("error:"+id,"");}
 
-    public void recoverableStage(String id,SessionStage s){
-        if(s==null){clearRecoverableStage(id);return;}
-        prefs.edit().putString("recoverable_stage:"+id,s.name()).apply();
-    }
-    public SessionStage recoverableStage(String id){
-        String raw=prefs.getString("recoverable_stage:"+id,null);if(raw==null)return null;
-        try{return SessionStage.valueOf(raw);}catch(Exception e){return null;}
-    }
-    public void clearRecoverableStage(String id){prefs.edit().remove("recoverable_stage:"+id).apply();}
-
     public void appendErrorHistory(String id,String message,SessionStage stage){
         JSONArray history;
         try{history=new JSONArray(prefs.getString("error_history:"+id,"[]"));}
@@ -160,7 +150,7 @@ public final class SessionJournal {
                 .remove("objective:"+id).remove("starter:"+id)
                 .remove("session_id:"+id).remove("session_mode:"+id).remove("baseline:"+id)
                 .remove("close_summary_history:"+id).remove("error:"+id)
-                .remove("recoverable_stage:"+id).remove("error_history:"+id).apply();
+                .remove("error_history:"+id).apply();
     }
 
     private static String safe(String v){return v==null?"":v;}
