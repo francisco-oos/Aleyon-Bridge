@@ -46,7 +46,7 @@ for token in ['Notebook','notebook','Cuaderno','cuaderno','showCurtain','hideCur
 check('CompatibilityMemory' in service,'Compatibility diagnostics missing')
 check('artemisStartAgent.nextFreshChat' in service and 'transport.createNormalConversation' in service,'Fresh provider chat is not Artemis-governed')
 check('transport.isBlankConversation' in service,'Fresh-chat postcondition missing')
-check('prompts.contextCapsule(profile,ledger,sessionId' in service and '"LIVE".equals(sessionMode),true)' in service,'Fresh-chat continuity capsule missing')
+check('prompts.contextCapsule(profile,ledger,sessionId' in service and '"LIVE".equals(sessionMode))' in service,'Fresh-chat continuity capsule missing')
 check('ConversationRegistry' not in service and 'canonicalTitle' not in service,'Provider conversation registry leaked back into runtime')
 check('recoverProfile' not in html and 'recoverProfile' not in main,'User-visible recovery API returned')
 
