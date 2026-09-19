@@ -6,12 +6,7 @@ python3 "$ROOT/tests/verify_package.py"
 rm -rf "$OUT"; mkdir -p "$OUT"
 javac -d "$OUT" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/SessionStage.java" \
-  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/ProtocolContract.java" \
-  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/RecoveryPlanner.java" \
-  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/ProfileNaming.java" \
-  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/CanonicalConversationPolicy.java" \
-  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/CanonicalChatRoutingPolicy.java" \
-  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/TransportState.java" \
+  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/ProtocolContract.java" \  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/ProfileNaming.java" \  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/TransportState.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/ScreenBoundsPolicy.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/LearningEvent.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/LearningLedger.java" \
