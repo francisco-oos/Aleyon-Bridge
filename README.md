@@ -38,7 +38,7 @@ Gemini         → reasons, converses, Live, voice/camera/screen, file analysis
 
 **Artemis transports. Gemini thinks. Bridge remembers.**
 
-Provider chat history is disposable. A session can disappear from Gemini without damaging the learner profile because the next session is reconstructed from local Bridge state automatically.
+Provider chat history is disposable. A session can disappear from Gemini without damaging the learner profile because the next session starts again from the authoritative local Bridge state.
 
 ## Two Artemis tasks
 
