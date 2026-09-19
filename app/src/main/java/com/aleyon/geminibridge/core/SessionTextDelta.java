@@ -47,7 +47,9 @@ public final class SessionTextDelta {
         if(signals.isEmpty())return false;
         Collections.sort(signals,Comparator.comparingInt(String::length).reversed());
         if(signals.size()>8)signals=new ArrayList<>(signals.subList(0,8));
-        int required=Math.max(1,Math.min(Math.max(1,minimumMatches),signals.size()));
+        int requested=Math.max(1,minimumMatches);
+        if(signals.size()<requested)return false;
+        int required=requested;
         int hits=0;
         for(String s:signals)if(hay.contains(s)&&++hits>=required)return true;
         return false;
