@@ -55,10 +55,11 @@ public final class SessionJournal {
 
     public SessionStage stage(String id){
         try{
-            SessionStage s=SessionStage.valueOf(prefs.getString("stage:"+id,SessionStage.READY.name()));
-            // 0.5.0-alpha3 removed user-visible recovery. Old installs may
-            // still persist RECOVERING; treat it as a clean idle profile.
-            return s==SessionStage.RECOVERING?SessionStage.READY:s;
+            String raw=prefs.getString("stage:"+id,SessionStage.READY.name());
+            // Legacy builds could persist RECOVERING. Recovery is no longer a
+            // product state; old installs migrate that value to READY.
+            if("RECOVERING".equals(raw))return SessionStage.READY;
+            return SessionStage.valueOf(raw);
         }catch(Exception e){return SessionStage.ERROR;}
     }
 
