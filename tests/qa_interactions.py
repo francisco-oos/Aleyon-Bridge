@@ -34,7 +34,7 @@ check('removeNativeLocalProfile' in html and 'deleteProfileEverywhere' not in ht
 # Native state-machine contracts.
 check('AutomationRequest.Type.START_LIVE_SESSION' in main,'Live request not emitted natively')
 check('AutomationRequest.Type.START_CHAT_SESSION' in main,'Chat request not emitted natively')
-check('artemisLiveAgent.nextLive' in service and 'transport.startLive(r)' in service,'Live request is not governed through Artemis + narrow transport capability')
+check('artemisStartAgent.nextLive' in service and 'transport.startLive(r)' in service,'Live request is not governed through Artemis + narrow transport capability')
 check('GeminiStateObserver.observe' in service and 'o.liveAvailable' in service and 'journal.baselineText' in service,'Context settle/capability verifier missing')
 check('SessionReportParser.parse' in service,'Close report verifier missing')
 check('learning.commitVerified' in service,'Local commit verification missing')
@@ -43,12 +43,12 @@ check('journal.appendCloseSummary' in service,'Close summary history persistence
 check('SessionTextDelta.delta' in service,'Session evidence delta missing')
 for token in ['Notebook','notebook','Cuaderno','cuaderno','showCurtain','hideCurtain']:
     check(token not in service, f'Forbidden legacy runtime token in service: {token}')
-check('ConversationRegistry' in service and 'CompatibilityMemory' in service,'Adaptive conversation/compatibility memory missing')
-check('canonicalTitle=conversations.title(profile)' in service,'Canonical conversation is not resolved from the profile')
-check('conversations.markMissing(profile)' in service and 'rebuildingConversation=true' in service,'Missing canonical chat does not trigger reconstruction')
-check('transport.openCanonicalConversation' in service and 'transport.openConversationSearch' in service,'Canonical chat reuse/search flow missing')
-check('transport.createNormalConversation' in service and 'transport.setCanonicalTitle' in service,'Canonical reconstruction/rename flow missing')
-check('prompts.contextCapsule(profile,ledger,sessionId' in service and '"LIVE".equals(sessionMode),rebuildingConversation)' in service,'Reconstruction-aware context capsule missing')
+check('CompatibilityMemory' in service,'Compatibility diagnostics missing')
+check('artemisStartAgent.nextFreshChat' in service and 'transport.createNormalConversation' in service,'Fresh provider chat is not Artemis-governed')
+check('transport.isBlankConversation' in service,'Fresh-chat postcondition missing')
+check('prompts.contextCapsule(profile,ledger,sessionId' in service and '"LIVE".equals(sessionMode),true)' in service,'Fresh-chat continuity capsule missing')
+check('ConversationRegistry' not in service and 'canonicalTitle' not in service,'Provider conversation registry leaked back into runtime')
+check('recoverProfile' not in html and 'recoverProfile' not in main,'User-visible recovery API returned')
 
 if errors:
     print('FAIL interaction QA');[print(' -',e) for e in errors];sys.exit(1)
