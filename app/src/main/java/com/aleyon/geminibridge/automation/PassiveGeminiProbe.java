@@ -222,6 +222,7 @@ public final class PassiveGeminiProbe {
     private static String surface(AccessibilityNodeInfo root) {
         if (root == null) return "UNAVAILABLE";
         if (GeminiUi.isBlockingConsentDialog(root)) return "CONSENT_DIALOG";
+        if (GeminiUi.isConversationSearchOpen(root)) return "CONVERSATION_SEARCH";
         if (GeminiUi.isNavigationDrawerOpen(root)) return "DRAWER";
         if (GeminiUi.isLiveScreen(root)) return "LIVE";
         if (GeminiUi.chatComposer(root) != null) return "CHAT";
