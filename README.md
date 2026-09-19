@@ -1,111 +1,114 @@
-# Aleyon Bridge 0.5.0-alpha2
+# Aleyon Bridge 0.5.0-alpha3
 
 Aleyon Bridge is a local learning-continuity layer over the official Gemini Android app.
 
-## Daily experience stays simple
+## Daily flow
 
-The normal user still does only this:
+The product deliberately does very little:
 
 ```text
 open Bridge
   ↓
-choose language/profile
+choose profile
   ↓
-Chat  or  Iniciar Live
+Chat or Iniciar Live
   ↓
-Gemini opens with the relevant profile, progress and next objective
+open a fresh normal Gemini chat
+  ↓
+send profile + local continuity + current objective
+  ↓
+Chat / Gemini Live
+  ↓
+close session
+  ↓
+Gemini gives a short debrief in the same chat
+  ↓
+Bridge stores the verified result locally
 ```
 
-The adaptive transport stays invisible unless Gemini needs a human decision or an unknown UI variant is detected.
+There is no canonical Gemini conversation, provider-side learner memory, notebook lifecycle or user-visible recovery workflow.
 
 ## Responsibility split
 
 ```text
-Aleyon Bridge      → stores profile, progress, evidence and reconstruction state
-Adaptive transport → carries, brings back and adapts; observes/verifies/recoveries Gemini UI
-Android / Gemini   → transports selected file bytes and provides reasoning, Chat, Live and multimodality
+Aleyon Bridge  → profile, progress, evidence, summaries, next objective
+Artemis layer  → observes Android, transports context, verifies actions
+Gemini         → reasons, converses, Live, voice/camera/screen, file analysis
 ```
 
-**Artemis carries, brings back and adapts. Gemini thinks. Bridge remembers.**
+**Artemis transports. Gemini thinks. Bridge remembers.**
 
-Bridge now embeds a narrow Apache-2.0 derivative of Google Artemis: its Android multi-window root recovery plus a Flash-style observe/action loop with learned routine replay. The unsafe server/ADB/gesture surfaces are intentionally excluded. Embedded Artemis does not need microphone access and does not read study-file bytes. Gemini owns Live audio/camera/screen. For documents/images/audio/video, Android's native picker and Gemini own the byte handoff; Bridge carries the session intent/context and verifies the surrounding flow.
+Provider chat history is disposable. A session can disappear from Gemini without damaging the learner profile because the next session is reconstructed from local Bridge state automatically.
 
-## Canonical Gemini conversation
+## Two Artemis tasks
 
-Each language/profile uses one deterministic Gemini conversation:
+The embedded Android-safe Artemis derivative now learns only two product tasks:
 
-`ALEYON — <idioma>`
-
-That conversation is a useful **cognitive cache**, not authoritative memory. Bridge still sends a bounded local continuity update every session. If the Gemini conversation disappears, Bridge reconstructs it from the local `LearningLedger` and continues under the same canonical title.
-
-## Adaptive start flow
+### START_SESSION
 
 ```text
-observe current Gemini state
+observe Gemini
   ↓
-normalize (Gemini already open / another chat / Live already active)
+reach/create a fresh normal chat
   ↓
-resolve the canonical conversation
-  ├─ found → reuse
-  └─ missing → create + reconstruct + rename
+write continuity capsule
   ↓
-deliver bounded local context
+verify Send
   ↓
-verify Chat or enter/verify Live
+verify Live capability
+  ↓
+start Live (or leave Chat ready)
 ```
 
-No device-brand branches, absolute screen coordinates or accessibility gesture injection are allowed in production.
+### CLOSE_SESSION
+
+```text
+end Live if needed
+  ↓
+observe transcript until stable
+  ↓
+request short debrief in the same chat
+  ↓
+parse result
+  ↓
+verified local commit
+```
+
+Routine memory is phase-aware, so the same Gemini screen can legitimately require a different action during fresh-chat creation, context delivery, Live startup or debrief. A mismatched learned step is invalidated and relearned instead of blindly replayed.
+
+## Intentionally removed in alpha3
+
+- deterministic `ALEYON — <idioma>` Gemini chat names;
+- provider conversation registry;
+- conversation search/reuse/rebuild logic;
+- automated chat renaming;
+- canonical-chat recovery;
+- the **Recuperar** button and recovery command;
+- recovery planner and recovery session stage.
+
+If Android kills an unfinished run, the next explicit **Iniciar Live** or **Chat** starts a clean provider session from the authoritative local profile. The user never has to repair a Gemini conversation.
+
+## Continuity capsule
+
+Each new provider chat receives a bounded high-signal capsule containing the current profile, preferences, last verified summary, next objective and recent verified evidence. Full learning history stays local.
+
+Gemini is instructed not to invent memories or claim progress that Bridge did not provide.
 
 ## Study materials
 
-0.5.0-alpha2 introduces the safe material-handoff contract:
-
-```text
-Bridge profile + learning goal
-        ↓
-Adaptive transport opens/verifies the correct Gemini chat
-        ↓
-Gemini native attachment surface
-        ↓
-User/Android selects the document, image, audio or video
-        ↓
-Gemini reads/analyzes the actual bytes
-        ↓
-Bridge stores only learning results/evidence needed for continuity
-```
-
-`SessionMaterial` stores metadata only. `MaterialHandoffPolicy` accepts user-selected `content://` references, rejects filesystem `file://` paths and applies conservative item/size guards. The current alpha does **not** automate the Android document picker; that is deliberate to avoid broad filesystem/system-UI authority.
-
-## Compatibility immune memory
-
-`CompatibilityMemory` and `ArtemisRoutineMemory` are separate from `LearningLedger`. After a successful route, Artemis stores only the semantic state/action routine. If the same Gemini build still matches, that routine is replayed. If an action/state stops matching—even without a package-version change—the routine is invalidated and relearned from current semantic observations. Fully opaque variants still fail closed rather than guessing.
-
-## Session close and profile enrichment
-
-Every verified close now persists:
-
-- a bounded session summary;
-- next objective;
-- session transcript delta;
-- observed progress evidence;
-- explicit reinforcement evidence;
-- recent session history.
-
-Deleting a provider conversation does not delete these facts.
+Bridge keeps only metadata and learning intent. Android/Gemini owns the actual selected bytes. The current alpha does not automate the Android document picker.
 
 ## Security invariants
 
 - no microphone, camera, Internet or storage permission in Bridge;
-- no `MANAGE_EXTERNAL_STORAGE`, broad overlay or package-install permission;
-- Android backup disabled for local learner memory;
-- Accessibility limited to Gemini packages;
+- no unrestricted ADB/shell/package control inside the APK;
+- no coordinate gesture injection;
+- Accessibility is allow-listed to Gemini packages;
 - `canPerformGestures=false`;
-- no arbitrary shell / unrestricted ADB / package control in the APK;
-- WebView is local-only, debugging disabled, external navigation blocked;
-- human consent remains human-owned;
-- unknown provider UI fails closed.
-
-Artemis is not embedded wholesale. Known open Artemis command-injection surfaces involving arbitrary shell/package/notification hooks are explicitly outside the production Bridge capability set.
+- human consent dialogs are never auto-accepted;
+- Android backup is disabled for learner memory;
+- local WebView only; remote navigation/debugging disabled;
+- unknown UI variants fail closed instead of guessing.
 
 ## Development source of truth
 
@@ -115,12 +118,12 @@ Artemis is not embedded wholesale. Known open Artemis command-injection surfaces
 
 ## QA
 
-Run the same suite on Linux/macOS or Windows:
+Run:
 
 ```bash
 bash tests/run_core_tests.sh
 ```
 
-The suite includes package/version parity, Java core tests, a 60-profile/360-session contract matrix, static architecture QA, WebView/native interaction QA, security QA, Windows/Linux build-runner parity and full Java stub compilation. The published `develop/artemis-transport` candidate also passed real Android `clean assembleDebug` in GitHub Actions with Android SDK 35, Gradle 8.9 and Java 17; the resulting APK artifact was verified and uploaded.
+The suite covers package/version parity, Java core contracts, a 60-profile multi-session simulation, static architecture QA, WebView/native interaction QA, security QA, Windows/Linux build parity and full Java stub compilation.
 
-Physical Gemini behavior is still a separate promotion gate. See `docs/NUBIA_QA_PLAN.md`.
+Physical Gemini behavior remains a separate promotion gate. See `docs/NUBIA_QA_PLAN.md`.
