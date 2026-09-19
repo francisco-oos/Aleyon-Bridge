@@ -7,6 +7,7 @@ import com.aleyon.geminibridge.core.ProtocolContract;
 
 /** Compact session-scoped prompts. Provider-side history is never authoritative memory. */
 public final class PromptRepository {
+    public static final String TUTOR_CLOSE_MARKER="ALEYON TUTOR CLOSE V1";
     @SuppressWarnings("unused") private final Context context;
     public PromptRepository(Context c){context=c.getApplicationContext();}
 
@@ -20,6 +21,10 @@ public final class PromptRepository {
      * Aleyon parses only the four human-readable lines from the new response.
      */
     public String sessionDebrief(ProfileSpec p){
+        return TUTOR_CLOSE_MARKER+"\n\n"+sessionDebriefBody(p);
+    }
+
+    private String sessionDebriefBody(ProfileSpec p){
         String language=p==null||p.targetLanguage==null||p.targetLanguage.trim().isEmpty()?"idioma objetivo":p.targetLanguage.trim();
         return "Cierra ahora esta práctica de "+language+". Esta es una tarea corta: "
                 +"no continúes la conversación, no respondas preguntas pendientes y no expliques tu razonamiento. "
@@ -36,11 +41,12 @@ public final class PromptRepository {
      * pending Live question instead of producing the debrief.
      */
     public String sessionDebriefRetry(ProfileSpec p,String evidence){
-        String base=sessionDebrief(p);
+        String base=sessionDebriefBody(p);
         String e=evidence==null?"":evidence.replace('\n',' ').replace('\r',' ')
                 .trim().replaceAll("\\s+"," ");
         if(e.length()>1800)e=e.substring(0,900)+" … "+e.substring(e.length()-900);
-        return "Segundo intento de cierre. Ignora respuestas anteriores y atiende únicamente este mensaje. "
+        return TUTOR_CLOSE_MARKER+"\n\n"
+                +"Segundo intento de cierre. Ignora respuestas anteriores y atiende únicamente este mensaje. "
                 +base+(e.isEmpty()?"":" Evidencia observada de la práctica: "+e);
     }
 

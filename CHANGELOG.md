@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0-alpha11 — Gemini Tutor Protocol V1 opcional
+
+- Añade `ALEYON TUTOR START V1` como primer contenido literal de la cápsula de inicio.
+- Añade `ALEYON TUTOR CLOSE V1` como primer contenido literal del cierre normal y de su único retry.
+- Los marcadores activan las instrucciones nativas opcionales de Gemini cuando el usuario las configuró previamente.
+- Si el usuario no configuró esas instrucciones, los marcadores son texto inocuo y alpha10 sigue funcionando con su política pedagógica compacta completa.
+- No cambia Artemis, navegación, Live, salida por X, tiempos, burbuja, cross-chat, notificaciones, memoria local ni Pedagogical State v2.
+- Mantiene el presupuesto máximo de cápsula y el mismo debrief estructurado de cuatro líneas.
+- Añade QA estático para impedir que START/CLOSE desaparezcan de futuras versiones.
+
+
 ## 0.5.0-alpha10 — Pedagogical State v2 / cápsula compacta
 
 - Congela el transporte validado de alpha9: no cambia Artemis, navegación Gemini, inicio de Live, salida por X, cierre cross-chat ni notificaciones.

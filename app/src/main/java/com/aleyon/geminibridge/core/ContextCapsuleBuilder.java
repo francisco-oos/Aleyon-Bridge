@@ -11,6 +11,7 @@ import com.aleyon.geminibridge.automation.ProfileSpec;
  * 3) the small learned state that matters now.
  */
 public final class ContextCapsuleBuilder {
+    public static final String TUTOR_START_MARKER="ALEYON TUTOR START V1";
     public static final int MAX_CAPSULE_CHARS=3400;
     private static final int MAX_GOAL=240;
     private static final int MAX_CONTEXT=220;
@@ -23,7 +24,10 @@ public final class ContextCapsuleBuilder {
         PedagogicalState state=PedagogicalStateBuilder.build(ledger);
 
         StringBuilder b=new StringBuilder(3000);
-        b.append("Contexto de aprendizaje de Aleyon. Intégralo en silencio: no lo confirmes, no lo resumas y no lo cites.\n")
+        // Keep this as the literal first content of the first provider message.
+        // Gemini's optional native instructions use it as a dormant-mode trigger.
+        b.append(TUTOR_START_MARKER).append("\n\n")
+         .append("Contexto de aprendizaje de Aleyon. Intégralo en silencio: no lo confirmes, no lo resumas y no lo cites.\n")
          .append("Aleyon conserva la memoria y el progreso local. No inventes recuerdos ni atribuyas progreso sin evidencia.\n")
          .append("Perfil: ")
          .append(clip(blank(p.targetLanguage,"idioma objetivo"),60))

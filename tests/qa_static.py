@@ -30,6 +30,8 @@ for token in forbidden:
     check(token not in production, f'Forbidden legacy provider-memory/curtain token returned: {token}')
 check('LearningStore' in service and 'commitVerified' in service and 'commit()' in store,'Verified local learning commit missing')
 check('ContextCapsuleBuilder' in capsule and 'Contexto de aprendizaje de Aleyon.' in capsule,'Fresh-session pedagogical capsule missing')
+check('TUTOR_START_MARKER="ALEYON TUTOR START V1"' in capsule and 'b.append(TUTOR_START_MARKER).append("\\n\\n")' in capsule,'Optional Gemini tutor START trigger is missing or not first in capsule')
+check('TUTOR_CLOSE_MARKER="ALEYON TUTOR CLOSE V1"' in prompt and prompt.count('return TUTOR_CLOSE_MARKER+"\\n\\n"')>=2,'Optional Gemini tutor CLOSE trigger is missing from close/retry')
 check('Reconstrucción de continuidad' not in capsule and 'reconstructConversation' not in capsule and 'reconstructConversation' not in prompt,'Obsolete reconstruction mode returned')
 check('MAX_CAPSULE_CHARS=3400' in capsule and 'MAX_STATE=760' in capsule and 'clipPrefixAtLine' in capsule,'Capsule does not enforce a hard total context budget')
 check('ledger.snapshot()' not in capsule,'Raw learning history leaked back into provider capsule')
@@ -174,8 +176,8 @@ notification=read('app/src/main/java/com/aleyon/geminibridge/automation/Notifica
 check('EXTRA_OPEN_SUMMARY_PROFILE' in notification and 'tapIntent.putExtra' in notification and 'FLAG_ACTIVITY_SINGLE_TOP' in notification,'Notification tap is not bound to a profile summary')
 check('captureSummaryIntent' in main and 'onNewIntent' in main and 'NotificationHelper.EXTRA_OPEN_SUMMARY_PROFILE' in main,'MainActivity does not consume notification summary intents')
 check('openPendingSummary()' in html,'Cold/resumed app cannot open a pending detailed summary')
-check('versionCode 32' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
-check(version=='0.5.0-alpha10','VERSION file mismatch')
+check('versionCode 33' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
+check(version=='0.5.0-alpha11','VERSION file mismatch')
 
 # No obsolete prompt pipeline or upgrade-only command aliases
 prompt_dir=ROOT/'app/src/main/assets/prompts'
