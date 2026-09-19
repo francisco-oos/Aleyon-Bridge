@@ -9,8 +9,7 @@ public final class AutomationRequest {
         DIAGNOSTIC_PROBE,
         START_LIVE_SESSION,
         START_CHAT_SESSION,
-        CLOSE_SESSION,
-        RECOVER
+        CLOSE_SESSION
     }
 
     public final Type type;
