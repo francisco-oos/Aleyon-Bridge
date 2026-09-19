@@ -159,18 +159,137 @@ public final class GeminiUi {
         return null;
     }
 
+    private static AccessibilityNodeInfo uniqueEditableDescendant(
+            AccessibilityNodeInfo container, AccessibilityNodeInfo root) {
+        if (container == null || root == null) return null;
+        AccessibilityNodeInfo only = null;
+        int count = 0;
+        Queue<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(container);
+        while (!q.isEmpty()) {
+            AccessibilityNodeInfo n = q.remove();
+            if (n.isEditable() && isActionablyVisible(n, root)) {
+                only = n;
+                if (++count > 1) return null;
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) q.add(child);
+            }
+        }
+        return count == 1 ? only : null;
+    }
+
     /**
-     * Returns the normal Gemini chat composer when the current build exposes
-     * its Robin resource id. Falls back to the only/first editable node for
-     * older builds. This is a capability resolver, not a screen-coordinate
-     * selector: the field probe showed
-     * assistant_robin_input_collapsed_text_half_sheet as the editable composer.
+     * Strong evidence for the normal chat composer.
+     *
+     * Resource ids are treated as optional evidence inside the provider
+     * adapter only; callers never depend on them. A changed build may still
+     * resolve through a verified chat-input container. We deliberately do not
+     * fall back to an arbitrary EditText.
      */
-    public static AccessibilityNodeInfo chatComposer(AccessibilityNodeInfo root) {
+    private static AccessibilityNodeInfo explicitChatComposer(AccessibilityNodeInfo root) {
+        if (root == null) return null;
         AccessibilityNodeInfo byId = findByViewIdSuffix(root,
                 "assistant_robin_input_collapsed_text_half_sheet");
-        if (byId != null && byId.isEditable()) return byId;
-        return firstEditable(root);
+        if (byId != null && byId.isEditable() && isActionablyVisible(byId, root)) return byId;
+
+        String[] containers = {
+                "assistant_chat_add_reply_container",
+                "assistant_mode_convergence_chat_input_layout",
+                "assistant_chat_add_reply_wrapper"
+        };
+        for (String suffix : containers) {
+            AccessibilityNodeInfo container = findByViewIdSuffix(root, suffix);
+            AccessibilityNodeInfo editable = uniqueEditableDescendant(container, root);
+            if (editable != null) return editable;
+        }
+        return null;
+    }
+
+    private static boolean subtreeLooksLikeSearch(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        Queue<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        int visited = 0;
+        while (!q.isEmpty() && visited++ < 24) {
+            AccessibilityNodeInfo n = q.remove();
+            String sig = norm(nodeText(n) + " "
+                    + (n.getContentDescription() == null ? "" : n.getContentDescription().toString()) + " "
+                    + (n.getHintText() == null ? "" : n.getHintText().toString()));
+            if (sig.contains("buscar") || sig.contains("search")) return true;
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) q.add(child);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Search-result lists on the observed Compose surface expose selectable
+     * rows. Requiring multiple checkable rows avoids confusing a normal
+     * scrollable conversation with the search surface.
+     */
+    private static boolean hasScrollableChoiceList(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        Queue<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        while (!q.isEmpty()) {
+            AccessibilityNodeInfo n = q.remove();
+            if (n.isScrollable() && isActionablyVisible(n, root)) {
+                int choices = 0;
+                Queue<AccessibilityNodeInfo> sub = new ArrayDeque<>();
+                sub.add(n);
+                while (!sub.isEmpty() && choices < 2) {
+                    AccessibilityNodeInfo x = sub.remove();
+                    if (x != n && x.isCheckable() && isActionablyVisible(x, root)) choices++;
+                    for (int i = 0; i < x.getChildCount(); i++) {
+                        AccessibilityNodeInfo child = x.getChild(i);
+                        if (child != null) sub.add(child);
+                    }
+                }
+                if (choices >= 2) return true;
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) q.add(child);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Conversation search is a first-class semantic surface, not a chat.
+     *
+     * This intentionally combines independent evidence (search semantics or a
+     * selectable result list) and refuses to classify an editable field alone.
+     */
+    public static boolean isConversationSearchOpen(AccessibilityNodeInfo root) {
+        if (root == null || explicitChatComposer(root) != null) return false;
+        AccessibilityNodeInfo editable = focusedOrOnlyEditable(root);
+        if (editable == null) return false;
+        return subtreeLooksLikeSearch(editable) || hasScrollableChoiceList(root);
+    }
+
+    /**
+     * Returns only a proven normal Gemini chat composer.
+     *
+     * Never fall back to the first EditText. The previous fallback is exactly
+     * what made Gemini's "Buscar chats" field masquerade as the message
+     * composer in the field probe.
+     */
+    public static AccessibilityNodeInfo chatComposer(AccessibilityNodeInfo root) {
+        AccessibilityNodeInfo explicit = explicitChatComposer(root);
+        if (explicit != null) return explicit;
+        if (isConversationSearchOpen(root) || isNavigationDrawerOpen(root)) return null;
+
+        AccessibilityNodeInfo conversation = findByViewIdSuffix(root,
+                "assistant_robin_conversation_container");
+        if (conversation != null && isActionablyVisible(conversation, root)) {
+            return uniqueEditableDescendant(conversation, root);
+        }
+        return null;
     }
 
     public static boolean sendMessage(AccessibilityNodeInfo root, String text) {
@@ -641,28 +760,69 @@ public final class GeminiUi {
         return semantic != null && clickNodeOrClickableParent(semantic);
     }
 
-    /** Opens the semantic conversation search control in the drawer. */
+    /** Opens search only from a proven conversation-list surface. */
     public static boolean clickConversationSearch(AccessibilityNodeInfo root) {
-        return clickAnyExact(root, "Buscar chats", "Search chats", "Buscar conversaciones", "Search conversations");
+        if (!isNavigationDrawerOpen(root)) return false;
+        AccessibilityNodeInfo semantic = findAny(root,
+                "Buscar chats", "Search chats", "Buscar conversaciones", "Search conversations");
+        if (semantic == null) semantic = findContains(root, "buscar", "search");
+        return semantic != null && clickNodeOrClickableParent(semantic);
     }
 
-    /** Writes a query into the currently visible conversation-search field. */
+    /** Writes a query only after the search surface itself has been proven. */
     public static boolean setConversationSearchQuery(AccessibilityNodeInfo root, String query) {
-        if (root == null || query == null || query.trim().isEmpty()) return false;
+        if (root == null || query == null || query.trim().isEmpty()
+                || !isConversationSearchOpen(root)) return false;
         AccessibilityNodeInfo target = focusedOrOnlyEditable(root);
         return target != null && setText(target, query.trim());
     }
 
-    /** Opens a deterministic canonical conversation from the visible drawer. */
+    private static boolean hasClickableOrCheckableAncestor(AccessibilityNodeInfo node) {
+        AccessibilityNodeInfo cur = node;
+        for (int depth = 0; cur != null && depth < 6; depth++, cur = cur.getParent()) {
+            if (cur.isClickable() || cur.isCheckable()) return true;
+        }
+        return false;
+    }
+
+    /**
+     * A canonical title is valid only when it belongs to an actionable
+     * conversation row. The editable query is excluded so text typed into
+     * search can never masquerade as its own result.
+     */
+    private static AccessibilityNodeInfo conversationTitleNode(
+            AccessibilityNodeInfo root, String title) {
+        if (root == null || title == null || title.trim().isEmpty()) return null;
+        if (!isNavigationDrawerOpen(root) && !isConversationSearchOpen(root)) return null;
+        String wanted = norm(title.trim());
+        Queue<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        while (!q.isEmpty()) {
+            AccessibilityNodeInfo n = q.remove();
+            if (!n.isEditable() && isActionablyVisible(n, root)) {
+                String text = norm(nodeText(n));
+                String desc = norm(n.getContentDescription() == null
+                        ? "" : n.getContentDescription().toString());
+                if ((text.equals(wanted) || desc.equals(wanted))
+                        && hasClickableOrCheckableAncestor(n)) return n;
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) q.add(child);
+            }
+        }
+        return null;
+    }
+
+    /** Opens a deterministic canonical conversation only from an actionable row. */
     public static boolean clickConversationByTitle(AccessibilityNodeInfo root, String title) {
-        if (root == null || title == null || title.trim().isEmpty()) return false;
-        AccessibilityNodeInfo node = findAny(root, title.trim());
+        AccessibilityNodeInfo node = conversationTitleNode(root, title);
         return node != null && clickNodeOrClickableParent(node);
     }
 
-    /** True when the deterministic canonical conversation is visible in the drawer. */
+    /** True only when a real actionable conversation row is visible. */
     public static boolean hasConversationTitle(AccessibilityNodeInfo root, String title) {
-        return root != null && title != null && !title.trim().isEmpty() && findAny(root, title.trim()) != null;
+        return conversationTitleNode(root, title) != null;
     }
 
     /** Chat-level rename command. Exact only: never match conversation content. */
