@@ -5,7 +5,7 @@
  *
  * Adapted for Aleyon Bridge from Google Artemis
  * packages/artemis-accessibility-helper/.../HierarchyDumper.java.
- * Changes: removed HTTP/ADB/screenshot surfaces, retained only bounded
+ * Changes: removed HTTP/ADB/screenshot surfaces, retained only immediate
  * multi-window root discovery and focused-node recovery, and added a
  * package verifier so Bridge can never resolve outside Gemini.
  */
@@ -13,7 +13,6 @@ package com.aleyon.geminibridge.artemis;
 
 import android.accessibilityservice.AccessibilityService;
 import android.os.Build;
-import android.os.SystemClock;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 
@@ -30,7 +29,6 @@ import java.util.List;
  */
 public final class ArtemisRootResolver {
     private static final int PREFETCH_DESCENDANTS_HYBRID = 1 << 3;
-    private static final long[] RETRY_BACKOFF_MS = {40L,80L,120L,160L,220L,300L};
 
     public interface Verifier {
         boolean trusted(AccessibilityNodeInfo node);
@@ -50,14 +48,15 @@ public final class ArtemisRootResolver {
     private ArtemisRootResolver(){}
 
     public static Result resolve(AccessibilityService service,Verifier verifier){
-        if(service==null||verifier==null)return new Result(null,"none",0,"service/verifier unavailable");
-        Result last=new Result(null,"none",0,"");
-        for(int attempt=0;attempt<=RETRY_BACKOFF_MS.length;attempt++){
-            last=resolveOnce(service,verifier);
-            if(last.root!=null)return last;
-            if(attempt<RETRY_BACKOFF_MS.length)SystemClock.sleep(RETRY_BACKOFF_MS[attempt]);
-        }
-        return last;
+        if(service==null||verifier==null)
+            return new Result(null,"none",0,"service/verifier unavailable");
+        /*
+         * Deliberately single-pass. If Android has not exposed a trustworthy
+         * Gemini root yet, the caller re-observes from the event-driven runner.
+         * The resolver itself never sleeps and never advances a UI action on a
+         * timer.
+         */
+        return resolveOnce(service,verifier);
     }
 
     private static Result resolveOnce(AccessibilityService service,Verifier verifier){
