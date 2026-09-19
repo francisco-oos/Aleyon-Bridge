@@ -11,6 +11,7 @@ config=read('app/src/main/res/xml/accessibility_service_config.xml')
 main=read('app/src/main/java/com/aleyon/geminibridge/MainActivity.java')
 service=read('app/src/main/java/com/aleyon/geminibridge/automation/AleyonAccessibilityService.java')
 transport=read('app/src/main/java/com/aleyon/geminibridge/transport/GeminiConversationTransport.java')
+notification=read('app/src/main/java/com/aleyon/geminibridge/automation/NotificationHelper.java')
 java='\n'.join(p.read_text(encoding='utf-8',errors='replace') for p in (ROOT/'app/src/main/java').rglob('*.java'))
 
 # Permission minimization.
@@ -22,6 +23,10 @@ for permission in [
     'android.permission.REQUEST_INSTALL_PACKAGES','android.permission.PACKAGE_USAGE_STATS'
 ]: check(permission not in manifest,f'forbidden/high-authority permission present: {permission}')
 check('android.permission.POST_NOTIFICATIONS' in manifest,'expected optional notification permission missing')
+check('requestNotificationPermissionIfNeeded' not in main and 'requestPermissions(' not in main,
+      'optional notifications must never trigger a runtime permission dialog at startup')
+check('checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)' in notification,
+      'NotificationHelper must fail closed when notification permission is absent')
 check('android:allowBackup="false"' in manifest,'local learner memory must not be Android-backup enabled')
 check('android:usesCleartextTraffic="false"' in manifest,'cleartext traffic must stay disabled')
 
@@ -34,6 +39,10 @@ check('android:canRetrieveWindowContent="true"' in config,'required semantic obs
 for token in ['Runtime.getRuntime().exec','new ProcessBuilder','ProcessBuilder(','executeShell(','run_adb_command','adb shell','ARTEMIS_NOTIFY_CMD','MCP_NOTIFY_COMMAND','subprocess','shell=True']:
     check(token not in java,f'general command/shell capability leaked into APK: {token}')
 check('dispatchGesture(' not in java,'coordinate gesture injection leaked into APK')
+check('isBlockingConsentDialog(blocker)' in service and 'overlay.hide();' in service,
+      'human consent dialogs must remove Aleyon overlays before accepting touch')
+check('overlay.showNotice("Gemini requiere una decisión tuya' not in service,
+      'consent flow must not place an accessibility overlay over the human decision')
 check('openNativeAttachmentSurface' in transport,'narrow native attachment surface missing')
 check('clickEndLive' in transport and 'clickAny(root,"Cerrar"' not in transport,'provider labels leaked into transport boundary')
 
