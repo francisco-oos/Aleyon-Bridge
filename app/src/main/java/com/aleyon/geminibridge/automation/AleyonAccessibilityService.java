@@ -370,10 +370,21 @@ public final class AleyonAccessibilityService extends AccessibilityService
             try{
                 AccessibilityNodeInfo blocker=root();
                 if(GeminiUi.isBlockingConsentDialog(blocker)){
-                    if(!waitingForUserConsent){waitingForUserConsent=true;if(overlay!=null)overlay.showNotice("Gemini requiere una decisión tuya. Aleyon no aceptará ni cancelará permisos por ti.");}
+                    // Security/consent surfaces must receive untouched input.
+                    // Android may deliberately reject permission-button taps
+                    // while an accessibility overlay is visible (tapjacking
+                    // protection), so remove every Aleyon overlay while the
+                    // human makes the decision. We never click it for them.
+                    if(!waitingForUserConsent){waitingForUserConsent=true;if(overlay!=null)overlay.hide();}
                     schedule(1200);return;
                 }
-                if(waitingForUserConsent){waitingForUserConsent=false;if(overlay!=null)overlay.hideNotice();}
+                if(waitingForUserConsent){
+                    waitingForUserConsent=false;
+                    if(overlay!=null){
+                        if(mode==Mode.WAIT)showOverlay(profile);
+                        else overlay.showWorking(profile.label,phaseLabel(mode));
+                    }
+                }
                 switch(mode){case START_LIVE,START_CHAT->pumpStart();case WAIT->pumpWait();case CLOSE->pumpClose();}
             }catch(Exception e){fail("Error interno de automatización: "+e.getClass().getSimpleName());}
         }
