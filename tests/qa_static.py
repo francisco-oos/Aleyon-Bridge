@@ -58,6 +58,13 @@ check('GOOGLE_HOST_VERIFICATION_LEASE_MS' in service,'Short verified-host lease 
 check('isBlockingConsentDialog' in service and 'overlay.hide();' in service,'Human consent pause policy must remove overlays')
 check('GeminiUi.clickNavigationToggle' not in service and 'GeminiUi.clickNormalNewChat' not in service,'Provider selectors leaked back into service')
 check('transport.openConversationList' in service and 'transport.openCanonicalConversation' in service,'Semantic canonical-chat navigation missing')
+check('CONVERSATION_SEARCH' in read('app/src/main/java/com/aleyon/geminibridge/core/TransportState.java'),'Conversation search is not a first-class transport state')
+composer_block=ui[ui.find('public static AccessibilityNodeInfo chatComposer'):ui.find('public static boolean sendMessage')]
+check('return firstEditable(root);' not in composer_block,'Arbitrary EditText can still masquerade as Gemini composer')
+check('isConversationSearchOpen' in ui and 'conversationTitleNode' in ui,'Search-surface isolation missing')
+check('CanonicalChatRoutingPolicy.decide' in service and 'conversations.isKnown(profile.id)' in service,'Migrated profile routing still searches blindly')
+check(service.index('CanonicalChatRoutingPolicy.decide') < service.index('transport.openConversationSearch'),'Search is not gated by canonical registry policy')
+check('MAX_START_RUNTIME_MS' in service and 'MAX_ROUTE_REPLANS' in service,'Anti-freeze transport watchdog missing')
 check('o.liveAvailable' in service and 'GeminiStateObserver.observe' in service,'Live capability gate missing')
 check(service.index('o.liveAvailable') < service.index('transition(profile,SessionStage.CONTEXT_INJECTING)'),'Live capability must be proven before context injection')
 check('clickSendAction' in ui and 'assistant_robin_input_voice_chat_button_compose' in ui,'Nubia send-arrow resolver missing')
