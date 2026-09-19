@@ -19,13 +19,15 @@ On start Bridge performs **observe → normalize → resolve → act → verify*
 1. observe the real Gemini state;
 2. normalize unexpected starting states (including Gemini already open or Live already active);
 3. open the conversation list semantically;
-4. resolve the canonical conversation directly or through conversation search;
-5. if it is missing, create a normal conversation and reconstruct continuity from local memory;
+4. if the profile has no verified canonical-chat registry entry (migration/upgrade case), rebuild directly without searching;
+5. if Aleyon previously verified the canonical chat, reuse it when visible or perform at most one bounded semantic search before rebuilding;
 6. deliver the bounded local continuity capsule;
 7. for rebuilt conversations, assign the deterministic canonical title;
 8. enter Chat or Live and verify the requested state.
 
 ## Artemis boundary
+
+`CONVERSATION_SEARCH` is explicitly distinct from `NORMAL_CHAT`. Search-query text is never accepted as a conversation result, and `chatComposer()` never falls back to the first arbitrary `EditText`. A start-time watchdog and bounded semantic replans guarantee fail-closed recovery rather than indefinite automation loops.
 
 This branch adopts the useful Artemis principles without importing unrestricted Artemis authority into the APK. The Bridge transport surface is allow-listed: conversation navigation, text delivery, Chat/Live transition, verification and recovery. It does **not** expose arbitrary shell commands, arbitrary package control, installation, public daemon endpoints or unrestricted ADB execution.
 
