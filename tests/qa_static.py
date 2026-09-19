@@ -80,6 +80,8 @@ check('TRANSCRIPT_SETTLE_MS' not in service and 'transcriptSettlePasses' not in 
 check('StartPhase' in service and 'ClosePhase' in service,'Goal-oriented lifecycle phases missing')
 check('AdaptiveNavigationPlanner' not in service and not (ROOT/'app/src/main/java/com/aleyon/geminibridge/core/AdaptiveNavigationPlanner.java').exists(),'Superseded custom navigation planner still exists')
 check('memory.load' in artemis_flash and 'memory.invalidate' in artemis_flash and 'memory.save' in artemis_flash,'Artemis routine learn/replay/invalidate loop incomplete')
+routine_keys=re.findall(r'artemisRoutineKey\("([^"]+)"\)',service)
+check(sorted(routine_keys)==['close-session','start-session'],f'Artemis runtime expanded beyond START_SESSION/CLOSE_SESSION: {routine_keys}')
 check('FOCUS_INPUT' in artemis_root and 'FOCUS_ACCESSIBILITY' in artemis_root,'Artemis focused-root recovery tier missing')
 check('SystemClock.sleep' not in artemis_root and 'RETRY_BACKOFF_MS' not in artemis_root,'Blocking programmed waits returned to Artemis root resolution')
 check('MAX_START_RUNTIME_MS' in service and 'MAX_CLOSE_RUNTIME_MS' in service,'Anti-freeze transport watchdog missing')
