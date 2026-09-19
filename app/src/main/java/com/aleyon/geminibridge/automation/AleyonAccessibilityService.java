@@ -9,7 +9,8 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 
 import com.aleyon.geminibridge.MainActivity;
-import com.aleyon.geminibridge.core.AdaptiveNavigationPlanner;
+import com.aleyon.geminibridge.artemis.ArtemisFlashAgent;
+import com.aleyon.geminibridge.artemis.ArtemisRootResolver;
 import com.aleyon.geminibridge.core.AutomationDiagnostics;
 import com.aleyon.geminibridge.core.LearningLedger;
 import com.aleyon.geminibridge.core.RecoveryPlanner;
@@ -274,33 +275,16 @@ public final class AleyonAccessibilityService extends AccessibilityService
     private AccessibilityNodeInfo resolveGeminiRoot(){
         lastRootSource="none";lastWindowsSummary="";lastInteractiveWindowCount=0;
         try{
-            AccessibilityNodeInfo active=getRootInActiveWindow();boolean activeTrusted=isTrustedGeminiCandidate(active);
-            List<AccessibilityWindowInfo> windows=getWindows();
-            if(windows==null||windows.isEmpty()){
-                lastWindowsSummary=active==null?"activeRoot=null; windows=0":"activeRootPackage="+packageName(active)+",verified="+activeTrusted+"; windows=0";
-                if(activeTrusted){lastRootSource=sourceFor(active,"active-root-no-windows");return active;}return null;
-            }
-            lastInteractiveWindowCount=windows.size();StringBuilder summary=new StringBuilder();int applicationWindows=0;
-            AccessibilityNodeInfo sole=null,focused=null,activeWindow=null;
-            for(int i=0;i<windows.size();i++){
-                AccessibilityWindowInfo w=windows.get(i);if(w==null)continue;AccessibilityNodeInfo candidate=null;
-                try{candidate=w.getRoot();}catch(Exception ignored){}
-                boolean application=w.getType()==AccessibilityWindowInfo.TYPE_APPLICATION;if(application)applicationWindows++;
-                boolean trusted=isTrustedGeminiCandidate(candidate);boolean blocker=trusted&&GeminiUi.isBlockingConsentDialog(candidate);
-                boolean robin=trusted&&GeminiUi.hasRobinResourceSignature(candidate);
-                if(summary.length()>0)summary.append(" | ");
-                summary.append('#').append(i).append(":type=").append(w.getType()).append(",active=").append(w.isActive())
-                        .append(",focused=").append(w.isFocused()).append(",pkg=").append(packageName(candidate))
-                        .append(",geminiVerified=").append(trusted).append(",robin=").append(robin).append(",consentBlocker=").append(blocker);
-                if(!trusted||!application)continue;sole=candidate;if(w.isFocused())focused=candidate;if(w.isActive())activeWindow=candidate;
-            }
-            lastWindowsSummary=summary.toString();
-            if(focused!=null){lastRootSource=sourceFor(focused,"interactive-window-focused");return focused;}
-            if(activeWindow!=null){lastRootSource=sourceFor(activeWindow,"interactive-window-active");return activeWindow;}
-            if(activeTrusted){lastRootSource=sourceFor(active,"active-root-fallback");return active;}
-            if(applicationWindows==1&&sole!=null){lastRootSource=sourceFor(sole,"interactive-window-sole-application");return sole;}
-        }catch(Exception e){lastWindowsSummary="resolverException="+e.getClass().getSimpleName();}
-        return null;
+            ArtemisRootResolver.Result result=ArtemisRootResolver.resolve(
+                    this,this::isTrustedGeminiCandidate);
+            lastRootSource=result.source;
+            lastWindowsSummary=result.summary;
+            lastInteractiveWindowCount=result.windowCount;
+            return result.root;
+        }catch(Exception e){
+            lastWindowsSummary="artemisResolverException="+e.getClass().getSimpleName();
+            return null;
+        }
     }
 
     private boolean isTrustedGeminiCandidate(AccessibilityNodeInfo node){
@@ -311,6 +295,16 @@ public final class AleyonAccessibilityService extends AccessibilityService
         return runner!=null&&now<=googleHostVerifiedUntilMs;
     }
     private static String sourceFor(AccessibilityNodeInfo node,String base){return GEMINI_HOST_PACKAGE.equals(packageName(node))?base+":google-host":base+":gemini-app";}
+    private String artemisRoutineKey(boolean registryKnown){
+        return "canonical-nav|"+packageVersion(GEMINI_PACKAGE)+"|"
+                +packageVersion(GEMINI_HOST_PACKAGE)+"|"+(registryKnown?"known":"migration");
+    }
+    private long packageVersion(String pkg){
+        try{
+            android.content.pm.PackageInfo info=getPackageManager().getPackageInfo(pkg,0);
+            return android.os.Build.VERSION.SDK_INT>=28?info.getLongVersionCode():info.versionCode;
+        }catch(Exception e){return 0L;}
+    }
     private static String packageName(AccessibilityNodeInfo n){return n==null||n.getPackageName()==null?"":n.getPackageName().toString();}
 
     private void rememberActive(ProfileSpec p){if(p!=null)getSharedPreferences("aleyon_runtime",MODE_PRIVATE).edit().putString("active_profile_id",p.id).apply();}
@@ -340,6 +334,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private int step,retries,liveMissingChecks,searchMisses,routeReplans;
         private boolean finished,waitingForUserConsent,rebuildingConversation,searchAttempted;
         private boolean searchQueryIssued,openingCanonical;
+        private ArtemisFlashAgent artemisAgent;
         private final long runnerStartedAtMs=System.currentTimeMillis();
         private int transcriptSettlePasses;
         private String sessionEvidenceText="", debriefBaselineText="", contextBaselineText="";
@@ -440,6 +435,8 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     sessionMode=mode==Mode.START_CHAT?"CHAT":"LIVE";
                     if(sessionId==null||sessionId.isEmpty())sessionId=newSessionId();
                     canonicalTitle=conversations.title(profile);
+                    artemisAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,
+                            artemisRoutineKey(conversations.isKnown(profile.id)));
                     journal.activeSession(profile.id,sessionId,sessionMode);
                     transition(profile,SessionStage.OPENING_SESSION_CHAT);
                     launchGemini();advance();
@@ -458,10 +455,9 @@ public final class AleyonAccessibilityService extends AccessibilityService
                 case 2 -> {
                     AccessibilityNodeInfo r=root();
                     TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
-                    AdaptiveNavigationPlanner.Action action=AdaptiveNavigationPlanner.next(
-                            o.state,
+                    ArtemisFlashAgent.Action action=artemisAgent.next(
+                            o,
                             conversations.isKnown(profile.id),
-                            o.canonicalConversationVisible,
                             searchAttempted,
                             searchQueryIssued,
                             searchMisses,
@@ -479,8 +475,10 @@ public final class AleyonAccessibilityService extends AccessibilityService
                         }
                         case BACK -> {
                             if(!performGlobalAction(GLOBAL_ACTION_BACK)){
+                                artemisAgent.actionFailed();
                                 retryAdaptive("Gemini no aceptó volver desde el estado observado.");return;
                             }
+                            artemisAgent.actionSucceeded(o.state,action);
                             routeReplans++;
                             if(routeReplans>MAX_ROUTE_REPLANS){
                                 failUpdate("El transporte agotó su presupuesto de recuperación semántica.");return;
@@ -489,48 +487,58 @@ public final class AleyonAccessibilityService extends AccessibilityService
                         }
                         case OPEN_CONVERSATION_LIST -> {
                             if(transport.openConversationList(r)){
+                                artemisAgent.actionSucceeded(o.state,action);
                                 retries=0;schedule(STEP_DELAY_MS);return;
                             }
+                            artemisAgent.actionFailed();
                             retryAdaptive("No pude abrir de forma semántica la lista de conversaciones de Gemini.");
                         }
                         case OPEN_VISIBLE_CANONICAL -> {
                             if(transport.openCanonicalConversation(r,canonicalTitle)){
+                                artemisAgent.actionSucceeded(o.state,action);
                                 openingCanonical=true;
                                 rebuildingConversation=false;
-                                canonicalRoute=searchAttempted?"adaptive-search-result":"adaptive-visible";
+                                canonicalRoute=artemisAgent.isReplaying()?"artemis-replay":"artemis-learn";
                                 retries=0;schedule(STEP_DELAY_MS);return;
                             }
+                            artemisAgent.actionFailed();
                             retryAdaptive("La conversación canónica estaba visible pero no pudo abrirse.");
                         }
                         case OPEN_SEARCH -> {
                             if(transport.openConversationSearch(r)){
+                                artemisAgent.actionSucceeded(o.state,action);
                                 searchAttempted=true;searchQueryIssued=false;searchMisses=0;
                                 retries=0;schedule(STEP_DELAY_MS);return;
                             }
+                            artemisAgent.actionFailed();
                             retryAdaptive("Aleyon conocía el chat canónico, pero Gemini no expuso búsqueda verificable.");
                         }
                         case TYPE_SEARCH_QUERY -> {
                             if(transport.searchConversation(r,canonicalTitle)){
+                                artemisAgent.actionSucceeded(o.state,action);
                                 searchQueryIssued=true;searchMisses=0;
                                 retries=0;schedule(RESPONSE_DELAY_MS);return;
                             }
+                            artemisAgent.actionFailed();
                             retryAdaptive("No pude entregar la consulta al buscador semántico de conversaciones.");
                         }
                         case CREATE_NORMAL_CHAT -> {
                             conversations.markMissing(profile);
                             if(transport.createNormalConversation(r)){
+                                artemisAgent.actionSucceeded(o.state,action);
                                 rebuildingConversation=true;openingCanonical=false;
-                                canonicalRoute=searchAttempted
-                                        ?"adaptive-search-miss-rebuild"
-                                        :"adaptive-migration-rebuild";
+                                canonicalRoute=artemisAgent.isReplaying()?"artemis-replay":"artemis-learn";
                                 retries=0;schedule(STEP_DELAY_MS);return;
                             }
+                            artemisAgent.actionFailed();
                             retryAdaptive("No pude crear un chat normal seguro para reconstruir la continuidad local.");
                         }
                         case COMPLETE_REUSE -> {
+                            artemisAgent.complete();
                             rebuildingConversation=false;openingCanonical=false;go(7);
                         }
                         case COMPLETE_REBUILD -> {
+                            artemisAgent.complete();
                             rebuildingConversation=true;openingCanonical=false;go(7);
                         }
                         case FAIL_CLOSED -> {
