@@ -4,44 +4,47 @@
  * Licensed under the Apache License, Version 2.0.
  *
  * Aleyon Bridge adaptation of Google Artemis FlashRunner:
- * one observation -> one allow-listed action -> observe again.
- * The learned successful action/state sequence is persisted and replayed
- * until it stops matching, at which point it is invalidated and relearned.
+ * observe -> choose one allow-listed action -> act -> observe again.
  */
 package com.aleyon.geminibridge.artemis;
 
 import android.content.Context;
 
-import com.aleyon.geminibridge.core.CanonicalChatRoutingPolicy;
 import com.aleyon.geminibridge.core.TransportState;
 import com.aleyon.geminibridge.transport.TransportObservation;
 
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Small task-oriented Artemis runtime used by Bridge.
+ *
+ * Bridge has only two provider tasks:
+ *  - START_SESSION: fresh chat -> context -> Live/chat ready
+ *  - CLOSE_SESSION: end Live -> debrief -> local commit
+ *
+ * The phase is part of learned routine memory, so the same semantic screen can
+ * safely map to different actions in different parts of one task.
+ */
 public final class ArtemisFlashAgent {
+    public static final String PHASE_FRESH_CHAT="fresh-chat";
+    public static final String PHASE_CONTEXT="context";
+    public static final String PHASE_LIVE="live";
+    public static final String PHASE_END_LIVE="end-live";
+    public static final String PHASE_DEBRIEF="debrief";
+
     public enum Action {
         WAIT,
         BACK,
-        OPEN_CONVERSATION_LIST,
-        OPEN_VISIBLE_CANONICAL,
-        OPEN_SEARCH,
-        TYPE_SEARCH_QUERY,
         CREATE_NORMAL_CHAT,
         WRITE_CONTEXT,
         SUBMIT_CONTEXT,
-        OPEN_CHAT_OPTIONS,
-        CHOOSE_RENAME,
-        WRITE_TITLE,
-        SAVE_TITLE,
         START_LIVE,
         END_LIVE,
+        COMPLETE_FRESH_CHAT,
         COMPLETE_CONTEXT,
-        COMPLETE_RENAME,
         COMPLETE_LIVE,
         COMPLETE_END_LIVE,
-        COMPLETE_REUSE,
-        COMPLETE_REBUILD,
         FAIL_CLOSED
     }
 
@@ -61,31 +64,31 @@ public final class ArtemisFlashAgent {
 
     public boolean isReplaying(){return replaying;}
 
-    public Action next(TransportObservation o,
-            boolean registryKnown,
-            boolean searchAttempted,
-            boolean queryIssued,
-            int searchMisses,
-            boolean openingCanonical,
-            boolean rebuilding){
+    /** Ensure each Bridge session starts in a clean normal Gemini chat. */
+    public Action nextFreshChat(TransportObservation o,boolean blankNormalChat){
         if(o==null)return Action.FAIL_CLOSED;
-        Action fallback=explore(o.state,registryKnown,o.canonicalConversationVisible,
-                searchAttempted,queryIssued,searchMisses,openingCanonical,rebuilding);
-        return replayOr(o.state,fallback);
+        if(o.state==TransportState.NORMAL_CHAT&&blankNormalChat)
+            return replayOr(PHASE_FRESH_CHAT,o.state,Action.COMPLETE_FRESH_CHAT);
+
+        Action fallback=switch(o.state){
+            case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
+            case NORMAL_CHAT,TEMPORARY_CHAT -> Action.CREATE_NORMAL_CHAT;
+            case CONVERSATION_LIST,CONVERSATION_SEARCH,LIVE_ACTIVE -> Action.BACK;
+            case UNKNOWN -> Action.FAIL_CLOSED;
+        };
+        return replayOr(PHASE_FRESH_CHAT,o.state,fallback);
     }
 
-    /**
-     * Flash-style context delivery: decide from the current observation, never
-     * from an assumed screen sequence. A successful WRITE/SUBMIT routine can
-     * be replayed on later sessions and is invalidated on mismatch/failure.
-     */
+    /** Deliver the locally-owned continuity capsule to the current chat. */
     public Action nextContext(TransportObservation o,
             boolean payloadPrepared,
             boolean deliveryObserved,
             boolean writeIssued,
-            int submitAttempts){
+            int submitAttempts,
+            boolean debrief){
         if(o==null)return Action.FAIL_CLOSED;
-        if(deliveryObserved)return Action.COMPLETE_CONTEXT;
+        String phase=debrief?PHASE_DEBRIEF:PHASE_CONTEXT;
+        if(deliveryObserved)return replayOr(phase,o.state,Action.COMPLETE_CONTEXT);
         Action fallback=switch(o.state){
             case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
             case NORMAL_CHAT -> {
@@ -97,65 +100,39 @@ public final class ArtemisFlashAgent {
             case LIVE_ACTIVE -> Action.BACK;
             default -> Action.FAIL_CLOSED;
         };
-        return replayOr(o.state,fallback);
+        return replayOr(phase,o.state,fallback);
     }
 
-    /**
-     * Learns the provider-specific rename routine without hard-coding a
-     * sequence in the service. Every successful action is followed by a fresh
-     * observation before another action is chosen.
-     */
-    public Action nextRename(TransportObservation o,
-            boolean renameActionVisible,
-            boolean renameEditorVisible,
-            boolean titlePrepared,
-            boolean saveIssued){
-        if(o==null)return Action.FAIL_CLOSED;
-        if(saveIssued && o.state==TransportState.NORMAL_CHAT && !renameEditorVisible)
-            return replayOr(o.state,Action.COMPLETE_RENAME);
-        Action fallback;
-        if(renameEditorVisible){
-            fallback=titlePrepared?Action.SAVE_TITLE:Action.WRITE_TITLE;
-        }else if(renameActionVisible){
-            fallback=Action.CHOOSE_RENAME;
-        }else if(o.state==TransportState.NORMAL_CHAT){
-            fallback=Action.OPEN_CHAT_OPTIONS;
-        }else if(o.state==TransportState.CONSENT_REQUIRED||o.state==TransportState.UNAVAILABLE){
-            fallback=Action.WAIT;
-        }else{
-            fallback=Action.FAIL_CLOSED;
-        }
-        return replayOr(o.state,fallback);
-    }
-
-    /** Ends Live reactively and verifies the return to normal chat. */
-    public Action nextEndLive(TransportObservation o){
-        if(o==null)return Action.FAIL_CLOSED;
-        if(o.state==TransportState.NORMAL_CHAT)return replayOr(o.state,Action.COMPLETE_END_LIVE);
-        Action fallback=switch(o.state){
-            case LIVE_ACTIVE -> Action.END_LIVE;
-            case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
-            default -> Action.FAIL_CLOSED;
-        };
-        return replayOr(o.state,fallback);
-    }
-
-    /** Starts Live only when the current semantic observation proves it is available. */
+    /** Start Live only after the context message has been delivered. */
     public Action nextLive(TransportObservation o){
         if(o==null)return Action.FAIL_CLOSED;
-        if(o.state==TransportState.LIVE_ACTIVE)return Action.COMPLETE_LIVE;
+        if(o.state==TransportState.LIVE_ACTIVE)
+            return replayOr(PHASE_LIVE,o.state,Action.COMPLETE_LIVE);
         Action fallback=switch(o.state){
             case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
             case NORMAL_CHAT -> o.liveAvailable?Action.START_LIVE:Action.WAIT;
             default -> Action.FAIL_CLOSED;
         };
-        return replayOr(o.state,fallback);
+        return replayOr(PHASE_LIVE,o.state,fallback);
     }
 
-    private Action replayOr(TransportState state,Action fallback){
+    /** End Live reactively and verify the return to the same normal chat. */
+    public Action nextEndLive(TransportObservation o){
+        if(o==null)return Action.FAIL_CLOSED;
+        if(o.state==TransportState.NORMAL_CHAT)
+            return replayOr(PHASE_END_LIVE,o.state,Action.COMPLETE_END_LIVE);
+        Action fallback=switch(o.state){
+            case LIVE_ACTIVE -> Action.END_LIVE;
+            case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
+            default -> Action.FAIL_CLOSED;
+        };
+        return replayOr(PHASE_END_LIVE,o.state,fallback);
+    }
+
+    private Action replayOr(String phase,TransportState state,Action fallback){
         if(replaying&&replayIndex<replay.steps.size()){
             ArtemisRoutineMemory.Step s=replay.steps.get(replayIndex);
-            if(s.state==state){
+            if(s.phase.equals(phase)&&s.state==state){
                 try{return Action.valueOf(s.action);}catch(Exception ignored){}
             }
             invalidateReplay();
@@ -171,54 +148,14 @@ public final class ArtemisFlashAgent {
         learned.clear();
     }
 
-    private static Action explore(TransportState state,
-            boolean registryKnown,
-            boolean canonicalVisible,
-            boolean searchAttempted,
-            boolean queryIssued,
-            int searchMisses,
-            boolean openingCanonical,
-            boolean rebuilding){
-        if(state==null)return Action.FAIL_CLOSED;
-        return switch(state){
-            case CONSENT_REQUIRED,UNAVAILABLE -> Action.WAIT;
-            case LIVE_ACTIVE -> Action.BACK;
-            case NORMAL_CHAT -> {
-                if(rebuilding)yield Action.COMPLETE_REBUILD;
-                if(openingCanonical)yield Action.COMPLETE_REUSE;
-                yield Action.OPEN_CONVERSATION_LIST;
-            }
-            case TEMPORARY_CHAT -> Action.OPEN_CONVERSATION_LIST;
-            case CONVERSATION_LIST -> {
-                if(openingCanonical||rebuilding)yield Action.WAIT;
-                CanonicalChatRoutingPolicy.Action route=CanonicalChatRoutingPolicy.decide(
-                        registryKnown,canonicalVisible,searchAttempted);
-                yield switch(route){
-                    case OPEN_VISIBLE -> Action.OPEN_VISIBLE_CANONICAL;
-                    case SEARCH_KNOWN_ONCE -> Action.OPEN_SEARCH;
-                    case REBUILD_DIRECT,REBUILD_AFTER_SEARCH -> Action.CREATE_NORMAL_CHAT;
-                };
-            }
-            case CONVERSATION_SEARCH -> {
-                if(openingCanonical)yield Action.WAIT;
-                if(!registryKnown)yield Action.BACK;
-                if(canonicalVisible)yield Action.OPEN_VISIBLE_CANONICAL;
-                if(!queryIssued)yield Action.TYPE_SEARCH_QUERY;
-                if(searchMisses<3)yield Action.WAIT;
-                yield Action.BACK;
-            }
-            case UNKNOWN -> Action.FAIL_CLOSED;
-        };
-    }
-
-    public void actionSucceeded(TransportState state,Action action){
-        if(action==null||state==null||!recordable(action))return;
+    public void actionSucceeded(String phase,TransportState state,Action action){
+        if(action==null||state==null||phase==null||phase.isEmpty()||!recordable(action))return;
         if(replaying){
             replayIndex++;
             if(replay!=null&&replayIndex>=replay.steps.size())replaying=false;
             return;
         }
-        if(learned.size()<24)learned.add(new ArtemisRoutineMemory.Step(state,action.name()));
+        if(learned.size()<20)learned.add(new ArtemisRoutineMemory.Step(phase,state,action.name()));
     }
 
     public void actionFailed(){
@@ -231,17 +168,9 @@ public final class ArtemisFlashAgent {
 
     private static boolean recordable(Action a){
         return a==Action.BACK
-                ||a==Action.OPEN_CONVERSATION_LIST
-                ||a==Action.OPEN_VISIBLE_CANONICAL
-                ||a==Action.OPEN_SEARCH
-                ||a==Action.TYPE_SEARCH_QUERY
                 ||a==Action.CREATE_NORMAL_CHAT
                 ||a==Action.WRITE_CONTEXT
                 ||a==Action.SUBMIT_CONTEXT
-                ||a==Action.OPEN_CHAT_OPTIONS
-                ||a==Action.CHOOSE_RENAME
-                ||a==Action.WRITE_TITLE
-                ||a==Action.SAVE_TITLE
                 ||a==Action.START_LIVE
                 ||a==Action.END_LIVE;
     }
