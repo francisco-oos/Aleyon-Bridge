@@ -35,6 +35,14 @@ The unsafe/general Artemis surfaces are deliberately not ported: `CommandServer`
 
 Full host-side Artemis remains an escalation path for a future Gemini variant that becomes semantically opaque; the embedded subset cannot honestly guarantee autonomous recovery from a UI that exposes no usable accessibility evidence.
 
+## Field correction — 2026-09-18
+
+Physical video QA showed a continuity capsule remaining in Gemini's composer until the user manually pressed Send. The old START flow had ended Artemis ownership at canonical navigation and then returned to a fixed service sequence for context send and Live. It also retried a failed Send resolver under the generic 32-attempt UI budget; after a manual send it could reinsert the capsule because it had no delivery postcondition.
+
+Decision: Artemis ownership now extends through `context-delivery` and `live-start`. Context writing and submission are separate observed actions. A submit is committed only after a new observation proves the composer no longer contains the payload and conversation text advanced. Manual completion is accepted without duplicating the payload but is not learned as an automated success. Send verification is bounded to three attempts.
+
+This embedded routine learner is not the full host-side Artemis reasoning runtime. It can replay, invalidate and relearn among semantic capabilities exposed by the Bridge adapter; a genuinely novel/opaque UI that requires model-based visual exploration remains an escalation case.
+
 ## Compatibility memory
 
 `CompatibilityMemory` stores route/failure evidence. `ArtemisRoutineMemory` stores the successful semantic state/action routine keyed by the installed Gemini/Google version signature. Neither contains learner content. Unchanged UI replays the learned routine; changed UI invalidates and relearns it. Unknown/opaque UI still fails closed with evidence instead of guessing.
