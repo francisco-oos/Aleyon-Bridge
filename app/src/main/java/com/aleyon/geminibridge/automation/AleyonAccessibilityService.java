@@ -413,7 +413,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     // protection), so remove every Aleyon overlay while the
                     // human makes the decision. We never click it for them.
                     if(!waitingForUserConsent){waitingForUserConsent=true;if(overlay!=null)overlay.hide();}
-                    schedule(1200);return;
+                    schedule(OBSERVE_FALLBACK_MS);return;
                 }
                 if(waitingForUserConsent){
                     waitingForUserConsent=false;
