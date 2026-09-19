@@ -27,7 +27,8 @@ forbidden = ['Notebook','notebook','Cuaderno','cuaderno','showCurtain','hideCurt
 for token in forbidden:
     check(token not in production, f'Forbidden legacy provider-memory/curtain token returned: {token}')
 check('LearningStore' in service and 'commitVerified' in service and 'commit()' in store,'Verified local learning commit missing')
-check('ContextCapsuleBuilder' in capsule and 'Actualización de continuidad de Aleyon.' in capsule and 'Reconstrucción de continuidad de Aleyon.' in capsule,'Continuation/reconstruction capsule missing')
+check('ContextCapsuleBuilder' in capsule and 'Contexto actual de continuidad de Aleyon.' in capsule,'Fresh-session continuity capsule missing')
+check('Reconstrucción de continuidad' not in capsule and 'reconstructConversation' not in capsule and 'reconstructConversation' not in prompt,'Obsolete reconstruction mode returned')
 check('MAX_RECENT_EVENTS=6' in capsule and 'MAX_SUMMARY=760' in capsule and 'MAX_GOAL=720' in capsule and 'MAX_SPECIALIZATION=620' in capsule,'Capsule does not enforce compact context budgets')
 check('SESSION_ID=' not in capsule and 'PROFILE_ID=' not in capsule and 'SCHEMA_VERSION=' not in capsule,'Internal session identifiers leaked into visible context')
 check('No inventes recuerdos' in capsule,'Memory anti-fabrication rule missing')
@@ -40,7 +41,11 @@ check('uniqueClickableDescendant(toolbar)' not in ui,'Ambiguous Robin-toolbar na
 check(service.index('journal.baselineText(profile.id,transport.collectConversationText(r))') > service.index('boolean delivered=contextWriteIssued&&!prepared'),'Evidence baseline must be captured only after verified context delivery')
 check('SessionReportParser.parseDebrief' in service and 'debriefBaselineText' in service,'Debrief delta parsing missing')
 check('session-progress' in read('app/src/main/java/com/aleyon/geminibridge/core/SessionReportParser.java') and 'session-reinforcement' in read('app/src/main/java/com/aleyon/geminibridge/core/SessionReportParser.java'),'Session close does not enrich learning evidence')
-check('ConversationRegistry' not in service and 'canonicalTitle' not in service,'Provider conversation registry leaked back into runtime')
+check('ConversationRegistry' not in production and 'canonicalTitle' not in production,'Provider conversation registry leaked back into runtime')
+for obsolete in ['CanonicalConversationPolicy.java','CanonicalChatRoutingPolicy.java','RecoveryPlanner.java']:
+    check(not (ROOT/'app/src/main/java/com/aleyon/geminibridge/core'/obsolete).exists(),f'Obsolete provider/recovery class remains: {obsolete}')
+check(not (ROOT/'app/src/main/java/com/aleyon/geminibridge/transport/ConversationRegistry.java').exists(),'Obsolete ConversationRegistry remains')
+check(not (ROOT/'app/src/main/java/com/aleyon/geminibridge/transport/SessionIntent.java').exists(),'Obsolete canonical SessionIntent remains')
 check('recoverProfile' not in html and 'recoverProfile' not in main,'User-visible recovery API returned')
 check('START_LIVE_SESSION' in main and 'START_CHAT_SESSION' in main,'Live/Chat native entry points missing')
 check('startLiveSession' in html and 'startChatSession' in html,'Live/Chat UI entry points missing')
