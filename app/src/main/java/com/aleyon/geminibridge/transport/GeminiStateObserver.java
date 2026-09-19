@@ -8,32 +8,32 @@ import com.aleyon.geminibridge.core.TransportState;
 /**
  * Artemis-inspired perception boundary: observe first, then act.
  *
- * This class deliberately classifies semantic states instead of exposing the
- * caller to device/build-specific UI details.
+ * It classifies only the current Gemini surface. Conversation titles and
+ * provider history are deliberately outside the model because Bridge does not
+ * depend on them for continuity.
  */
 public final class GeminiStateObserver {
     private GeminiStateObserver() {}
 
-    public static TransportObservation observe(AccessibilityNodeInfo root, String canonicalTitle) {
-        if(root==null) return new TransportObservation(TransportState.UNAVAILABLE,false,false,false,"root-unavailable");
+    public static TransportObservation observe(AccessibilityNodeInfo root) {
+        if(root==null)
+            return new TransportObservation(TransportState.UNAVAILABLE,false,false,"root-unavailable");
         if(GeminiUi.isBlockingConsentDialog(root))
-            return new TransportObservation(TransportState.CONSENT_REQUIRED,false,false,false,"human-consent");
-        boolean canonical=canonicalTitle!=null&&!canonicalTitle.trim().isEmpty()
-                && GeminiUi.hasConversationTitle(root,canonicalTitle);
+            return new TransportObservation(TransportState.CONSENT_REQUIRED,false,false,"human-consent");
         if(GeminiUi.isConversationSearchOpen(root))
-            return new TransportObservation(TransportState.CONVERSATION_SEARCH,false,false,canonical,"conversation-search");
+            return new TransportObservation(TransportState.CONVERSATION_SEARCH,false,false,"conversation-search");
         if(GeminiUi.isLiveScreen(root))
-            return new TransportObservation(TransportState.LIVE_ACTIVE,false,false,false,"live-active");
+            return new TransportObservation(TransportState.LIVE_ACTIVE,false,false,"live-active");
         if(GeminiUi.isNavigationDrawerOpen(root))
-            return new TransportObservation(TransportState.CONVERSATION_LIST,false,false,canonical,"conversation-list");
+            return new TransportObservation(TransportState.CONVERSATION_LIST,false,false,"conversation-list");
         if(GeminiUi.isTemporaryChat(root))
             return new TransportObservation(TransportState.TEMPORARY_CHAT,
-                    GeminiUi.chatComposer(root)!=null,false,false,"temporary-chat");
+                    GeminiUi.chatComposer(root)!=null,false,"temporary-chat");
         if(GeminiUi.isGeminiRoot(root)&&GeminiUi.chatComposer(root)!=null) {
             boolean live=GeminiUi.hasVisibleGeminiLiveLauncher(root);
-            return new TransportObservation(TransportState.NORMAL_CHAT,true,live,canonical,
+            return new TransportObservation(TransportState.NORMAL_CHAT,true,live,
                     live?"normal-chat+live":"normal-chat");
         }
-        return new TransportObservation(TransportState.UNKNOWN,false,false,canonical,"unclassified-gemini-state");
+        return new TransportObservation(TransportState.UNKNOWN,false,false,"unclassified-gemini-state");
     }
 }
