@@ -48,8 +48,8 @@ public final class AleyonAccessibilityService extends AccessibilityService
     public static final String GEMINI_PACKAGE=GeminiUi.GEMINI_APP_PACKAGE;
     public static final String GEMINI_HOST_PACKAGE=GeminiUi.GEMINI_GOOGLE_HOST_PACKAGE;
     private static final long GOOGLE_HOST_VERIFICATION_LEASE_MS=8_000L;
-    private static final long STEP_DELAY_MS=650L;
-    private static final long RESPONSE_DELAY_MS=1100L;
+    private static final long STEP_DELAY_MS=320L;
+    private static final long RESPONSE_DELAY_MS=650L;
     private static final long TRANSCRIPT_SETTLE_MS=1200L;
     private static final int MAX_UI_RETRIES=32;
     private static final int MAX_RESPONSE_RETRIES=80;
@@ -295,9 +295,12 @@ public final class AleyonAccessibilityService extends AccessibilityService
         return runner!=null&&now<=googleHostVerifiedUntilMs;
     }
     private static String sourceFor(AccessibilityNodeInfo node,String base){return GEMINI_HOST_PACKAGE.equals(packageName(node))?base+":google-host":base+":gemini-app";}
+    private String artemisRoutineKey(String capability){
+        return capability+"|"+packageVersion(GEMINI_PACKAGE)+"|"
+                +packageVersion(GEMINI_HOST_PACKAGE);
+    }
     private String artemisRoutineKey(boolean registryKnown){
-        return "canonical-nav|"+packageVersion(GEMINI_PACKAGE)+"|"
-                +packageVersion(GEMINI_HOST_PACKAGE)+"|"+(registryKnown?"known":"migration");
+        return artemisRoutineKey("canonical-nav")+"|"+(registryKnown?"known":"migration");
     }
     private long packageVersion(String pkg){
         try{
@@ -334,7 +337,10 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private int step,retries,liveMissingChecks,searchMisses,routeReplans;
         private boolean finished,waitingForUserConsent,rebuildingConversation,searchAttempted;
         private boolean searchQueryIssued,openingCanonical;
-        private ArtemisFlashAgent artemisAgent;
+        private ArtemisFlashAgent artemisAgent,artemisContextAgent,artemisLiveAgent;
+        private boolean contextInitialized,contextWriteIssued,contextWriteVerified,contextSubmitPending,liveStartPending;
+        private int contextSubmitAttempts,contextMissingPasses;
+        private String contextPayload="";
         private final long runnerStartedAtMs=System.currentTimeMillis();
         private int transcriptSettlePasses;
         private String sessionEvidenceText="", debriefBaselineText="", contextBaselineText="";
@@ -437,6 +443,10 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     canonicalTitle=conversations.title(profile);
                     artemisAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,
                             artemisRoutineKey(conversations.isKnown(profile.id)));
+                    artemisContextAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,
+                            artemisRoutineKey("context-delivery"));
+                    artemisLiveAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,
+                            artemisRoutineKey("live-start"));
                     journal.activeSession(profile.id,sessionId,sessionMode);
                     transition(profile,SessionStage.OPENING_SESSION_CHAT);
                     launchGemini();advance();
@@ -552,33 +562,106 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     }
                 }
                 case 7 -> {
-                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
-                    if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){
-                        retryAdaptive("La conversación seleccionada no llegó a un chat normal verificable.");return;
+                    AccessibilityNodeInfo r=root();
+                    TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+                    if(!contextInitialized){
+                        if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){
+                            retryAdaptive("La conversación seleccionada no llegó a un chat normal verificable.");return;
+                        }
+                        if(!rebuildingConversation){
+                            conversations.markVerified(profile,false);
+                            compatibility.recordSuccess(profile.id,canonicalRoute,o.evidence);
+                        }
+                        transition(profile,SessionStage.CONTEXT_INJECTING);
+                        contextBaselineText=transport.collectConversationText(r);
+                        LearningLedger ledger=learning.load(profile.id);
+                        contextPayload=prompts.contextCapsule(profile,ledger,sessionId,
+                                "LIVE".equals(sessionMode),rebuildingConversation);
+                        contextInitialized=true;
                     }
-                    if("LIVE".equals(sessionMode)&&!o.liveAvailable){
-                        retry("Esperando a que Gemini exponga Live en el chat normal.",true);return;
+
+                    boolean prepared=transport.isContextPrepared(r,contextPayload);
+                    String nowText=transport.collectConversationText(r);
+                    boolean delivered=contextWriteIssued&&!prepared
+                            && SessionTextDelta.delta(contextBaselineText,nowText).trim().length()>=20;
+
+                    if(prepared&&contextWriteIssued&&!contextWriteVerified){
+                        artemisContextAgent.actionSucceeded(TransportState.NORMAL_CHAT,
+                                ArtemisFlashAgent.Action.WRITE_CONTEXT);
+                        contextWriteVerified=true;
                     }
-                    if(!rebuildingConversation){
-                        conversations.markVerified(profile,false);
-                        compatibility.recordSuccess(profile.id,canonicalRoute,o.evidence);
+
+                    if(delivered){
+                        if(contextSubmitPending){
+                            artemisContextAgent.actionSucceeded(TransportState.NORMAL_CHAT,
+                                    ArtemisFlashAgent.Action.SUBMIT_CONTEXT);
+                            artemisContextAgent.complete();
+                        }else{
+                            // Human/manual submit is accepted as the postcondition, but it
+                            // is not promoted as proof that automation executed the click.
+                            compatibility.recordFailure(profile.id,
+                                    "context-submit-observed-without-automation-confirmation");
+                        }
+                        contextSubmitPending=false;
+                        advance();return;
                     }
-                    transition(profile,SessionStage.CONTEXT_INJECTING);
-                    contextBaselineText=transport.collectConversationText(r);
-                    LearningLedger ledger=learning.load(profile.id);
-                    String payload=prompts.contextCapsule(profile,ledger,sessionId,"LIVE".equals(sessionMode),rebuildingConversation);
-                    SessionIntent intent=new SessionIntent(profile.id,sessionId,canonicalTitle,
-                            "CHAT".equals(sessionMode)?SessionIntent.Mode.CHAT:SessionIntent.Mode.LIVE,payload,rebuildingConversation);
-                    if(transport.sendContext(r,intent.contextPayload)){advance();return;}
-                    retryAdaptive("No pude entregar el contexto de Aleyon a Gemini.");
+
+                    if(contextWriteIssued&&!prepared){
+                        contextMissingPasses++;
+                        if(contextMissingPasses>=3){
+                            artemisContextAgent.actionFailed();
+                            contextWriteIssued=false;contextWriteVerified=false;
+                            contextMissingPasses=0;
+                        }
+                    }else contextMissingPasses=0;
+
+                    ArtemisFlashAgent.Action action=artemisContextAgent.nextContext(
+                            o,prepared,false,contextWriteIssued,contextSubmitAttempts);
+                    switch(action){
+                        case WRITE_CONTEXT -> {
+                            if(transport.writeContext(r,contextPayload)){
+                                contextWriteIssued=true;
+                                contextMissingPasses=0;
+                                schedule(160L);return;
+                            }
+                            artemisContextAgent.actionFailed();
+                            if(++contextSubmitAttempts>=3){
+                                failUpdate("Artemis no pudo escribir el contexto en un compositor verificable.");return;
+                            }
+                            schedule(220L);
+                        }
+                        case SUBMIT_CONTEXT -> {
+                            contextSubmitAttempts++;
+                            if(transport.submitPreparedContext(r)){
+                                contextSubmitPending=true;
+                                schedule(220L);return;
+                            }
+                            artemisContextAgent.actionFailed();
+                            if(contextSubmitAttempts>=3){
+                                failUpdate("Artemis detectó el contexto escrito pero no pudo activar Enviar.");return;
+                            }
+                            schedule(220L);
+                        }
+                        case BACK -> {
+                            if(performGlobalAction(GLOBAL_ACTION_BACK)){schedule(STEP_DELAY_MS);return;}
+                            artemisContextAgent.actionFailed();
+                            failUpdate("Artemis no pudo normalizar Gemini antes de entregar el contexto.");
+                        }
+                        case WAIT -> schedule(220L);
+                        case COMPLETE_CONTEXT -> {artemisContextAgent.complete();advance();}
+                        case FAIL_CLOSED -> failUpdate("Artemis no pudo verificar una ruta segura para entregar el contexto.");
+                        default -> failUpdate("Artemis propuso una acción no válida durante la entrega de contexto.");
+                    }
                 }
                 case 8 -> {
                     AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
                     if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){
-                        retry("Gemini todavía no devolvió el compositor después de recibir el contexto.",true);return;
+                        schedule(RESPONSE_DELAY_MS);return;
                     }
                     if("LIVE".equals(sessionMode)&&!o.liveAvailable){
-                        retry("Esperando a que Gemini termine de responder y vuelva a mostrar Live.",true);return;
+                        // Gemini is still producing/settling its reply. This is model
+                        // latency, not a transport failure, so do not burn retry budget.
+                        schedule(RESPONSE_DELAY_MS);return;
                     }
                     String all=transport.collectConversationText(r);
                     journal.baselineText(profile.id,all);
@@ -611,14 +694,44 @@ public final class AleyonAccessibilityService extends AccessibilityService
                         mode=Mode.WAIT;step=0;retries=0;return;
                     }
                     transition(profile,SessionStage.LIVE_STARTING);
-                    if(transport.startLive(root()))advance();
-                    else retryAdaptive("No encontré un acceso verificable a Gemini Live.");
-                }
-                case 14 -> {
-                    if(transport.isLiveActive(root())){
-                        transition(profile,SessionStage.LIVE_ACTIVE);rememberActive(profile);showOverlay(profile);
-                        mode=Mode.WAIT;step=0;retries=0;
-                    }else retry("Gemini Live no llegó a estado activo.",true);
+                    AccessibilityNodeInfo r=root();
+                    TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+                    ArtemisFlashAgent.Action action=artemisLiveAgent.nextLive(o);
+                    switch(action){
+                        case START_LIVE -> {
+                            if(transport.startLive(r)){
+                                liveStartPending=true;
+                                schedule(220L);return;
+                            }
+                            artemisLiveAgent.actionFailed();
+                            if(++retries>=3){
+                                failUpdate("Artemis detectó Live pero no pudo activarlo.");return;
+                            }
+                            schedule(220L);
+                        }
+                        case COMPLETE_LIVE -> {
+                            if(liveStartPending){
+                                artemisLiveAgent.actionSucceeded(TransportState.NORMAL_CHAT,
+                                        ArtemisFlashAgent.Action.START_LIVE);
+                                artemisLiveAgent.complete();
+                            }
+                            transition(profile,SessionStage.LIVE_ACTIVE);
+                            rememberActive(profile);showOverlay(profile);
+                            mode=Mode.WAIT;step=0;retries=0;
+                        }
+                        case WAIT -> schedule(RESPONSE_DELAY_MS);
+                        case FAIL_CLOSED -> {
+                            artemisLiveAgent.actionFailed();
+                            if(++retries>=3){
+                                failUpdate("Artemis no pudo resolver una ruta segura hacia Gemini Live.");return;
+                            }
+                            schedule(STEP_DELAY_MS);
+                        }
+                        default -> {
+                            artemisLiveAgent.actionFailed();
+                            failUpdate("Artemis propuso una acción no válida al iniciar Gemini Live.");
+                        }
+                    }
                 }
                 default -> {}
             }
