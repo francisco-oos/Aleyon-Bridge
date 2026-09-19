@@ -453,19 +453,39 @@ public final class OverlayController {
             box.addView(s);
         }
 
+        String stage=status==null?"":status.stageLabel;
+        boolean inLive="En Live".equals(stage);
+        boolean inChat="En chat".equals(stage);
+        boolean closing="Cerrando".equals(stage)||"Guardando".equals(stage)||"Resumiendo".equals(stage);
+
+        if(inLive||inChat||closing){
+            TextView hint=new TextView(service);
+            hint.setText(inLive
+                    ? "Al cerrar, Aleyon finalizará Live y guardará el progreso del chat actual."
+                    : inChat
+                        ? "Al cerrar, Aleyon guardará el progreso de este chat."
+                        : "Cierre en curso. Aleyon está esperando o guardando el resultado.");
+            hint.setTextSize(12f);
+            hint.setTextColor(Color.rgb(70,82,105));
+            hint.setPadding(0,8,0,10);
+            box.addView(hint);
+        }
+
         Button back = new Button(service);
         back.setAllCaps(false);
-        back.setText("Volver a Gemini");
+        back.setText(inLive?"Volver a Live":inChat?"Volver al chat":closing?"Ver cierre en Gemini":"Volver a Gemini");
         back.setOnClickListener(v -> { hidePanel(); listener.onReturnToGemini(); });
         box.addView(back);
 
         Button close = new Button(service);
         close.setAllCaps(false);
-        boolean active = status != null && ("En Live".equals(status.stageLabel) || "En chat".equals(status.stageLabel)
-                || "Cerrando".equals(status.stageLabel) || "Guardando".equals(status.stageLabel)
-                || "Resumiendo".equals(status.stageLabel));
-        close.setText(active ? "Cerrar sesión" : "Cancelar preparación");
-        close.setOnClickListener(v -> { hidePanel(); listener.onCloseRequested(); });
+        if(closing){
+            close.setText("Cierre en curso…");
+            close.setEnabled(false);
+        }else{
+            close.setText(inLive?"Finalizar Live y guardar":inChat?"Guardar y cerrar sesión":"Cancelar preparación");
+            close.setOnClickListener(v -> { hidePanel(); listener.onCloseRequested(); });
+        }
         box.addView(close);
 
         panel = box;

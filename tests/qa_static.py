@@ -97,6 +97,14 @@ check('GeminiUi.clickMoreOptionsMenu' not in service,'Provider More-options sele
 check('artemisRenameAgent' not in service and 'setCanonicalTitle' not in service,'Canonical rename leaked back into runtime')
 check('artemisCloseAgent.nextEndLive' in service and 'transport.endLive(r)' in service,'Live close is not governed by Artemis')
 check('artemisCloseAgent.nextContext' in service,'Debrief delivery is not governed by close-session Artemis task')
+close_flow=service[service.find('private void pumpClose()'):service.find('private void finishReady()')]
+check('transport.createNormalConversation' not in close_flow,'Close flow must never create a provider chat')
+check('launchGemini();moveClose(ClosePhase.END_LIVE);' not in close_flow,'Close flow still blindly relaunches Gemini')
+check('if(transport.isGeminiSurface(r))' in close_flow and 'if(!closeLaunchIssued){closeLaunchIssued=true;launchGemini();}' in close_flow,'Close flow does not preserve current Gemini surface before relaunching')
+check('if("CHAT".equals(sessionMode) && o.state==TransportState.NORMAL_CHAT)' not in close_flow and 'if(o.state==TransportState.NORMAL_CHAT)' in close_flow,'Close still trusts stale mode instead of observed Live/Chat state')
+check('DEBRIEF_RESPONSE_TIMEOUT_MS' in service and 'commitTranscriptFallback' in close_flow and 'DEBRIEF_TIMEOUT' in close_flow,'Missing bounded debrief no-response fallback')
+check(close_flow.index('artemisCloseAgent.complete()') < close_flow.index('moveClose(ClosePhase.WAIT_DEBRIEF)'),'Artemis close routine is not saved before waiting for Gemini cognition')
+check('Finalizar Live y guardar' in overlay and 'Guardar y cerrar sesión' in overlay and 'Cierre en curso…' in overlay,'Bubble close controls are not state-aware')
 check('transport.sendContext(' not in service,'Legacy monolithic message sender still used by runtime')
 check('stableTranscriptObservations' in service and 'current.equals(stableTranscriptSnapshot)' in service,'Transcript close does not use observed stability')
 check('TRANSCRIPT_SETTLE_MS' not in service,'Fixed transcript settling delay returned')
@@ -124,8 +132,8 @@ check('android.permission.RECORD_AUDIO' not in manifest,'Bridge must not request
 check('android.permission.INTERNET' not in manifest,'Bridge unexpectedly requests INTERNET')
 check('SYSTEM_ALERT_WINDOW' not in manifest,'Broad overlay permission introduced')
 check('POST_NOTIFICATIONS' in manifest and 'NotificationHelper.postSessionClosed' in service,'Session close notification regression')
-check('versionCode 25' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
-check(version=='0.5.0-alpha3','VERSION file mismatch')
+check('versionCode 26' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
+check(version=='0.5.0-alpha4','VERSION file mismatch')
 
 # No obsolete prompt pipeline or upgrade-only command aliases
 prompt_dir=ROOT/'app/src/main/assets/prompts'

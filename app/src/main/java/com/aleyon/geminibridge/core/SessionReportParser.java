@@ -50,7 +50,8 @@ public final class SessionReportParser {
     }
 
     private static String value(String text,String labelRegex){
-        Pattern p=Pattern.compile("(?im)^\\s*"+labelRegex+"\\s*:\\s*(.+?)\\s*$");
+        Pattern p=Pattern.compile("(?im)^\\s*(?:[-•*]\\s+)?(?:\\*\\*|__)?"
+                +labelRegex+"(?:\\*\\*|__)?\\s*:\\s*(?:\\*\\*|__)?\\s*(.+?)\\s*$");
         Matcher m=p.matcher(text);
         String last="";
         while(m.find()) last=m.group(1).trim();

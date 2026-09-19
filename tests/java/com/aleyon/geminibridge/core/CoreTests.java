@@ -3,7 +3,7 @@ package com.aleyon.geminibridge.core;
 public final class CoreTests {
     private static int passed=0;
     public static void main(String[] args){
-        testNaming();testTransportState();testDebriefParser();testDebriefRejectIncomplete();
+        testNaming();testTransportState();testDebriefParser();testDebriefMarkdown();testDebriefRejectIncomplete();
         testTextDelta();testSchemaV5();testScreenBounds();testLedger();testDiagnostics();
         testMaterialPolicy();testProfileMatrix();testAdversarialInputs();
         System.out.println("PASS core tests: "+passed);
@@ -29,6 +29,16 @@ public final class CoreTests {
         eq("Simular una entrevista técnica breve.",r.nextObjective);eq(2,r.events.size());
         ok(r.events.get(0).evidence.contains("frases más completas"));
         ok(r.events.get(1).evidence.contains("pasado"));passed++;
+    }
+    private static void testDebriefMarkdown(){
+        String t="- **Resumen:** Practicamos conversación espontánea.\n"
+                +"* **Avance:** Mantuviste turnos más largos.\n"
+                +"- **A reforzar:** Pronunciación de terminaciones.\n"
+                +"**Próximo paso:** Repetir una conversación de trabajo.";
+        SessionReportParser.Report r=SessionReportParser.parseDebrief(t);
+        ok(r!=null);ok(r.summary.contains("conversación espontánea"));
+        ok(r.feedback.contains("turnos más largos"));
+        eq("Repetir una conversación de trabajo.",r.nextObjective);passed++;
     }
     private static void testDebriefRejectIncomplete(){
         ok(SessionReportParser.parseDebrief("Resumen: Sólo una línea") == null);passed++;

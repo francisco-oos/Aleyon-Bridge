@@ -12,6 +12,7 @@ import com.aleyon.geminibridge.MainActivity;
 import com.aleyon.geminibridge.artemis.ArtemisFlashAgent;
 import com.aleyon.geminibridge.artemis.ArtemisRootResolver;
 import com.aleyon.geminibridge.core.AutomationDiagnostics;
+import com.aleyon.geminibridge.core.LearningEvent;
 import com.aleyon.geminibridge.core.LearningLedger;
 import com.aleyon.geminibridge.core.SessionReportParser;
 import com.aleyon.geminibridge.core.SessionStage;
@@ -47,6 +48,8 @@ public final class AleyonAccessibilityService extends AccessibilityService
     private static final int MAX_UI_RETRIES=8;
     private static final long MAX_START_RUNTIME_MS=180_000L;
     private static final long MAX_CLOSE_RUNTIME_MS=180_000L;
+    private static final long DEBRIEF_RESPONSE_TIMEOUT_MS=45_000L;
+    private static final int TRANSCRIPT_STABLE_OBSERVATIONS=4;
 
     private static AleyonAccessibilityService instance;
     private final Handler handler=new Handler(Looper.getMainLooper());
@@ -165,7 +168,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         }
         handler.postDelayed(()->{
             JSONObject report=new JSONObject();
-            try{report.put("schema","aleyon-gemini-passive-probe-v9").put("version","0.5.0-alpha3")
+            try{report.put("schema","aleyon-gemini-passive-probe-v9").put("version","0.5.0-alpha4")
                     .put("probeId",probeId).put("readOnly",true).put("sampleCount",samples.length()).put("samples",samples);}catch(Exception ignored){}
             getSharedPreferences("aleyon_probe",MODE_PRIVATE).edit().putString("last_probe",report.toString())
                     .putLong("last_probe_ts",System.currentTimeMillis()).putString("last_probe_id",probeId).apply();
@@ -300,14 +303,14 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private boolean contextInitialized,contextWriteIssued,contextWriteVerified,contextSubmitPending,liveStartPending;
         private int contextSubmitAttempts,contextMissingPasses;
         private String contextPayload="";
-        private boolean endLivePending;
+        private boolean endLivePending,closeLaunchIssued;
         private boolean debriefInitialized,debriefWriteIssued,debriefWriteVerified,debriefSubmitPending;
         private int debriefSubmitAttempts,debriefMissingPasses;
-        private String debriefPayload="";
+        private String debriefPayload="",debriefResponseBaselineText="";
         private String stableTranscriptSnapshot="";
         private int stableTranscriptObservations;
         private final long runnerStartedAtMs=System.currentTimeMillis();
-        private long closeStartedAtMs;
+        private long closeStartedAtMs,debriefWaitStartedAtMs;
         private String sessionEvidenceText="", debriefBaselineText="", contextBaselineText="";
         private final Runnable pumpRunnable=this::pump;
 
@@ -324,6 +327,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
             if(!isCloseableActiveStage(current)){cancelToReady();return;}
             mode=Mode.CLOSE;closePhase=ClosePhase.INIT;retries=0;
             stableTranscriptSnapshot="";stableTranscriptObservations=0;
+            closeLaunchIssued=false;debriefWaitStartedAtMs=0L;debriefResponseBaselineText="";
             closeStartedAtMs=System.currentTimeMillis();
             if(overlay!=null)overlay.showWorking(profile.label,phaseLabel(Mode.CLOSE));schedule(0);
         }
@@ -579,11 +583,23 @@ public final class AleyonAccessibilityService extends AccessibilityService
                 case INIT -> {
                     transition(profile,SessionStage.CLOSING_SESSION);
                     artemisCloseAgent=new ArtemisFlashAgent(AleyonAccessibilityService.this,artemisRoutineKey("close-session"));
-                    launchGemini();moveClose(ClosePhase.END_LIVE);
+                    AccessibilityNodeInfo r=root();
+                    if(transport.isGeminiSurface(r)){
+                        moveClose(ClosePhase.END_LIVE);return;
+                    }
+                    if(!closeLaunchIssued){closeLaunchIssued=true;launchGemini();}
+                    schedule(OBSERVE_FALLBACK_MS);
                 }
                 case END_LIVE -> {
                     AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
-                    if("CHAT".equals(sessionMode) && o.state==TransportState.NORMAL_CHAT){
+                    if(o.state==TransportState.NORMAL_CHAT){
+                        if(endLivePending){
+                            artemisCloseAgent.actionSucceeded(ArtemisFlashAgent.PHASE_END_LIVE,
+                                    TransportState.LIVE_ACTIVE,ArtemisFlashAgent.Action.END_LIVE);
+                            endLivePending=false;
+                        }
+                        transition(profile,SessionStage.WAITING_TRANSCRIPT);
+                        if(overlay!=null)overlay.showWorking(profile.label,"Guardando conversación…");
                         moveClose(ClosePhase.STABILIZE_TRANSCRIPT);return;
                     }
                     ArtemisFlashAgent.Action action=artemisCloseAgent.nextEndLive(o);
@@ -617,11 +633,12 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     String current=transport.collectConversationText(r);
                     if(current.equals(stableTranscriptSnapshot))stableTranscriptObservations++;
                     else {stableTranscriptSnapshot=current;stableTranscriptObservations=0;}
-                    if(stableTranscriptObservations<2){
+                    if(stableTranscriptObservations<TRANSCRIPT_STABLE_OBSERVATIONS){
                         transport.scrollConversation(r);schedule(OBSERVE_FALLBACK_MS);return;
                     }
                     sessionEvidenceText=SessionTextDelta.delta(journal.baselineText(profile.id),current);
                     if(sessionEvidenceText.trim().length()<20){finishReady();return;}
+                    if(overlay!=null)overlay.showWorking(profile.label,"Pidiendo resumen a Gemini…");
                     moveClose(ClosePhase.DELIVER_DEBRIEF);
                 }
                 case DELIVER_DEBRIEF -> {
@@ -647,6 +664,10 @@ public final class AleyonAccessibilityService extends AccessibilityService
                             artemisCloseAgent.actionSucceeded(ArtemisFlashAgent.PHASE_DEBRIEF,
                                     TransportState.NORMAL_CHAT,ArtemisFlashAgent.Action.SUBMIT_CONTEXT);
                         }
+                        artemisCloseAgent.complete();
+                        debriefResponseBaselineText=now;
+                        debriefWaitStartedAtMs=System.currentTimeMillis();
+                        if(overlay!=null)overlay.showWorking(profile.label,"Esperando resumen de Gemini…");
                         moveClose(ClosePhase.WAIT_DEBRIEF);return;
                     }
                     if(debriefWriteIssued&&!prepared){
@@ -681,24 +702,48 @@ public final class AleyonAccessibilityService extends AccessibilityService
                 }
                 case WAIT_DEBRIEF -> {
                     String all=transport.collectConversationText(root());
-                    String debriefDelta=SessionTextDelta.delta(debriefBaselineText,all);
+                    String debriefDelta=SessionTextDelta.delta(debriefResponseBaselineText,all);
                     SessionReportParser.Report report=SessionReportParser.parseDebrief(debriefDelta);
-                    if(report==null){schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;}
-                    transition(profile,SessionStage.COMMITTING);
-                    if(!learning.commitVerified(profile.id,report,sessionId,sessionEvidenceText)){
-                        fail("No pude verificar el commit local de la memoria de aprendizaje.");return;
+                    if(report==null){
+                        long waited=debriefWaitStartedAtMs<=0L?0L:System.currentTimeMillis()-debriefWaitStartedAtMs;
+                        if(waited>=DEBRIEF_RESPONSE_TIMEOUT_MS){commitTranscriptFallback();return;}
+                        schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
                     }
-                    String summary=report.summary;
-                    if(!report.feedback.isEmpty())summary=(summary.isEmpty()?"":summary+"\n\n")+"Consejo: "+report.feedback;
-                    if(!report.nextObjective.isEmpty())summary=(summary.isEmpty()?"":summary+"\n")+"Próximo objetivo: "+report.nextObjective;
-                    journal.appendCloseSummary(profile.id,summary);
-                    journal.sessionHints(profile.id,report.nextObjective,"");
-                    try{profile.sessions++;journal.saveProfile(profile);}catch(Exception ignored){}
-                    NotificationHelper.postSessionClosed(AleyonAccessibilityService.this,profile.id,profile.label,summary);
-                    artemisCloseAgent.complete();
-                    finishReady();
+                    commitCloseReport(report);
                 }
             }
+        }
+
+        private void commitCloseReport(SessionReportParser.Report report){
+            transition(profile,SessionStage.COMMITTING);
+            if(overlay!=null)overlay.showWorking(profile.label,"Guardando progreso…");
+            if(!learning.commitVerified(profile.id,report,sessionId,sessionEvidenceText)){
+                fail("No pude verificar el commit local de la memoria de aprendizaje.");return;
+            }
+            String summary=report.summary;
+            if(!report.feedback.isEmpty())summary=(summary.isEmpty()?"":summary+"\n\n")+"Consejo: "+report.feedback;
+            if(!report.nextObjective.isEmpty())summary=(summary.isEmpty()?"":summary+"\n")+"Próximo objetivo: "+report.nextObjective;
+            journal.appendCloseSummary(profile.id,summary);
+            journal.sessionHints(profile.id,report.nextObjective,"");
+            try{profile.sessions++;journal.saveProfile(profile);}catch(Exception ignored){}
+            NotificationHelper.postSessionClosed(AleyonAccessibilityService.this,profile.id,profile.label,summary);
+            finishReady();
+        }
+
+        private void commitTranscriptFallback(){
+            SessionReportParser.Report report=new SessionReportParser.Report();
+            report.summary="Sesión guardada sin resumen de Gemini; se conservó la evidencia local.";
+            LearningLedger previous=learning.load(profile.id);
+            report.nextObjective=previous.getNextObjective();
+            String evidence=sessionEvidenceText==null?"":sessionEvidenceText.trim();
+            if(evidence.length()>600)evidence=evidence.substring(0,600);
+            if(!evidence.isEmpty()){
+                report.events.add(new LearningEvent("session-transcript","evidencia-de-sesion",
+                        "observed",evidence,System.currentTimeMillis()));
+            }
+            recordDiagnostic(profile,"DEBRIEF_TIMEOUT",
+                    "Gemini no devolvió un resumen verificable; evidencia local preservada.");
+            commitCloseReport(report);
         }
 
         private void finishReady(){
