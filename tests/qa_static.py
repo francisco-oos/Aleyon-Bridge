@@ -55,7 +55,7 @@ check('ScreenBoundsPolicy.isActionableRect' in ui and 'isActionablyVisible' in u
 check('interactive-window-focused' in service and 'interactive-window-active' in service,'Focused/active interactive-window root resolver missing')
 check(service.index('interactive-window-focused') < service.index('interactive-window-active'),'Focused Gemini window no longer outranks active fallback')
 check('GOOGLE_HOST_VERIFICATION_LEASE_MS' in service,'Short verified-host lease missing')
-check('isBlockingConsentDialog' in service and 'showNotice' in service,'Human consent pause policy missing')
+check('isBlockingConsentDialog' in service and 'overlay.hide();' in service,'Human consent pause policy must remove overlays')
 check('GeminiUi.clickNavigationToggle' not in service and 'GeminiUi.clickNormalNewChat' not in service,'Provider selectors leaked back into service')
 check('transport.openConversationList' in service and 'transport.openCanonicalConversation' in service,'Semantic canonical-chat navigation missing')
 check('o.liveAvailable' in service and 'GeminiStateObserver.observe' in service,'Live capability gate missing')
