@@ -14,6 +14,10 @@
 - Documents current Gemini file/Live capability boundary and Artemis upstream command-injection issues that must remain outside the APK.
 - Confirms the final `develop/artemis-transport` candidate with independent GitHub Actions QA plus real Android `clean assembleDebug` on SDK 35 / Gradle 8.9 / Java 17, producing a verified debug APK artifact.
 
+- Field hardening on `develop/artemis-transport`: migrated profiles with no canonical registry entry now rebuild directly instead of searching blindly; search is reserved for a previously verified canonical chat.
+- Adds `CONVERSATION_SEARCH` as a distinct transport state, removes the arbitrary-EditText composer fallback, rejects the search query itself as a conversation result, and adds bounded replan/runtime watchdogs to prevent frozen automation loops.
+- Adds regression coverage derived from the real Gemini passive probe where `Buscar chats` was previously misclassified as `CHAT`.
+
 ## 0.5.0-alpha1 — adaptive transport / canonical Gemini conversation
 
 - Adds a clean `develop/artemis-transport` line over the 0.4.0-alpha8 baseline.
