@@ -48,6 +48,7 @@ public final class AdaptiveNavigationPlanner {
             case TEMPORARY_CHAT -> Action.OPEN_CONVERSATION_LIST;
 
             case CONVERSATION_LIST -> {
+                if (openingCanonical || rebuilding) yield Action.WAIT;
                 CanonicalChatRoutingPolicy.Action route=CanonicalChatRoutingPolicy.decide(
                         registryKnown,canonicalVisible,searchAttempted);
                 yield switch(route){
@@ -58,6 +59,7 @@ public final class AdaptiveNavigationPlanner {
             }
 
             case CONVERSATION_SEARCH -> {
+                if (openingCanonical) yield Action.WAIT;
                 if (!registryKnown) yield Action.BACK;
                 if (canonicalVisible) yield Action.OPEN_VISIBLE_CANONICAL;
                 if (!queryIssued) yield Action.TYPE_SEARCH_QUERY;
