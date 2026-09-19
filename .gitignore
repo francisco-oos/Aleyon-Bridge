@@ -7,3 +7,6 @@ local.properties
 .idea/
 .test-out/
 QA_INTERACTION_AUDIT.json
+gradle/
+gradlew
+gradlew.bat
