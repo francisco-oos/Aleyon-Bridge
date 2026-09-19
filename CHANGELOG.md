@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0-alpha4 — cierre físico sobre la misma sesión Gemini
+
+- Corrige el fallo reproducido físicamente en Nubia y Samsung donde el cierre podía relanzar Gemini antes de observar la superficie Live/chat activa.
+- El cierre ahora se guía por el estado observado: termina Live si sigue activo, continúa directamente si ya está en Chat y sólo relanza Gemini cuando no hay una superficie verificada disponible.
+- Artemis guarda la rutina CLOSE_SESSION cuando Gemini acepta la petición de debrief; ya no depende de que el modelo llegue a responder para conservar lo aprendido del transporte Android.
+- Añade espera acotada de 45 s para el debrief. Si Gemini no responde, Aleyon conserva evidencia real de la sesión y cierra localmente sin inventar una evaluación pedagógica.
+- La burbuja distingue Live, Chat y cierre en curso, y evita reiniciar accidentalmente un cierre ya iniciado.
+- El parser acepta variantes inocuas con Markdown/viñetas.
+- La simulación sube a 100 perfiles, 8 intentos por perfil y 600 casos específicos de cierre.
+- No se reintroducen títulos, búsqueda, renombrado ni recuperación de chats de Gemini; la continuidad sigue siendo propiedad local de Aleyon.
+
 ## 0.5.0-alpha3 — disposable Gemini sessions / simplified Artemis lifecycle
 
 - Removes canonical Gemini conversations, provider chat search/reuse/rebuild and automated rename.
