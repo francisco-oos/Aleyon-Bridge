@@ -11,7 +11,6 @@ javac -d "$OUT" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/ProfileNaming.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/CanonicalConversationPolicy.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/CanonicalChatRoutingPolicy.java" \
-  "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/AdaptiveNavigationPlanner.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/TransportState.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/ScreenBoundsPolicy.java" \
   "$ROOT/app/src/main/java/com/aleyon/geminibridge/core/LearningEvent.java" \
