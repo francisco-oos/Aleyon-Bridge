@@ -28,7 +28,7 @@ Android / Gemini   → transports selected file bytes and provides reasoning, Ch
 
 **Artemis carries, brings back and adapts. Gemini thinks. Bridge remembers.**
 
-Artemis-derived transport does not need microphone access and does not read study-file bytes. Gemini owns Live audio/camera/screen. For documents/images/audio/video, Android's native picker and Gemini own the byte handoff; Bridge carries the session intent/context and verifies the surrounding flow.
+Bridge now embeds a narrow Apache-2.0 derivative of Google Artemis: its Android multi-window root recovery plus a Flash-style observe/action loop with learned routine replay. The unsafe server/ADB/gesture surfaces are intentionally excluded. Embedded Artemis does not need microphone access and does not read study-file bytes. Gemini owns Live audio/camera/screen. For documents/images/audio/video, Android's native picker and Gemini own the byte handoff; Bridge carries the session intent/context and verifies the surrounding flow.
 
 ## Canonical Gemini conversation
 
@@ -78,7 +78,7 @@ Bridge stores only learning results/evidence needed for continuity
 
 ## Compatibility immune memory
 
-`CompatibilityMemory` is separate from `LearningLedger`. Known Gemini routes remain cheap; unknown UI states fail closed with evidence rather than guessing. Host-side Artemis can then explore a new variant and help promote the smallest verified semantic rule.
+`CompatibilityMemory` and `ArtemisRoutineMemory` are separate from `LearningLedger`. After a successful route, Artemis stores only the semantic state/action routine. If the same Gemini build still matches, that routine is replayed. If an action/state stops matching—even without a package-version change—the routine is invalidated and relearned from current semantic observations. Fully opaque variants still fail closed rather than guessing.
 
 ## Session close and profile enrichment
 
