@@ -20,6 +20,10 @@
 - Replaces the interim custom navigation planner with a narrow embedded derivative of Google Artemis: multi-window root resolution from the Android helper, Flash-style observe→act→observe execution, and persistent routine replay/invalidation/relearning.
 - Learned routines are keyed by installed Gemini/Google package-version signature and are discarded immediately when observed state or action execution stops matching.
 - Explicitly excludes Artemis `CommandServer`, gesture injection, screenshots, unrestricted ADB/shell and package-control surfaces from the APK.
+- Physical-video fix: Artemis now owns `context-delivery` and `live-start`, not only canonical navigation; context write/send are separately observed and verified.
+- Fixes current Google-host Gemini keeping stale Live semantics on the compose action slot after text insertion; a non-empty verified composer may use that known slot as Send, with a mandatory postcondition check.
+- A manual Send during recovery is detected as successful delivery and no longer causes the continuity capsule to be inserted a second time.
+- Replaces the generic 32-retry Send failure path with at most three verified submit attempts and reduces normal reactive settling delays.
 
 ## 0.5.0-alpha1 — adaptive transport / canonical Gemini conversation
 
