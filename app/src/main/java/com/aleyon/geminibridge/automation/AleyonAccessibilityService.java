@@ -9,8 +9,8 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 
 import com.aleyon.geminibridge.MainActivity;
+import com.aleyon.geminibridge.core.AdaptiveNavigationPlanner;
 import com.aleyon.geminibridge.core.AutomationDiagnostics;
-import com.aleyon.geminibridge.core.CanonicalChatRoutingPolicy;
 import com.aleyon.geminibridge.core.LearningLedger;
 import com.aleyon.geminibridge.core.RecoveryPlanner;
 import com.aleyon.geminibridge.core.SessionReportParser;
@@ -339,6 +339,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private String sessionId;
         private int step,retries,liveMissingChecks,searchMisses,routeReplans;
         private boolean finished,waitingForUserConsent,rebuildingConversation,searchAttempted;
+        private boolean searchQueryIssued,openingCanonical;
         private final long runnerStartedAtMs=System.currentTimeMillis();
         private int transcriptSettlePasses;
         private String sessionEvidenceText="", debriefBaselineText="", contextBaselineText="";
@@ -455,74 +456,92 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     advance();
                 }
                 case 2 -> {
-                    TransportObservation o=observe();AccessibilityNodeInfo r=root();
-                    if(o.state==TransportState.CONVERSATION_LIST){advance();return;}
-                    if(o.state==TransportState.CONVERSATION_SEARCH){
-                        performGlobalAction(GLOBAL_ACTION_BACK);
-                        replan("Gemini estaba en búsqueda; volviendo a la lista antes de resolver el chat.",2);
-                        return;
-                    }
-                    if(o.state==TransportState.NORMAL_CHAT||o.state==TransportState.TEMPORARY_CHAT){
-                        if(transport.openConversationList(r)){advance();return;}
-                        retryAdaptive("No pude abrir de forma semántica la lista de conversaciones de Gemini.");return;
-                    }
-                    if(o.state==TransportState.LIVE_ACTIVE){performGlobalAction(GLOBAL_ACTION_BACK);schedule(STEP_DELAY_MS);return;}
-                    retryAdaptive("No pude normalizar Gemini antes de resolver la conversación canónica.");
-                }
-                case 3 -> {
-                    AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
-                    if(o.state!=TransportState.CONVERSATION_LIST){retryAdaptive("Gemini no confirmó la lista de conversaciones.");return;}
-                    CanonicalChatRoutingPolicy.Action action=CanonicalChatRoutingPolicy.decide(
-                            conversations.isKnown(profile.id),o.canonicalConversationVisible,searchAttempted);
+                    AccessibilityNodeInfo r=root();
+                    TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
+                    AdaptiveNavigationPlanner.Action action=AdaptiveNavigationPlanner.next(
+                            o.state,
+                            conversations.isKnown(profile.id),
+                            o.canonicalConversationVisible,
+                            searchAttempted,
+                            searchQueryIssued,
+                            searchMisses,
+                            openingCanonical,
+                            rebuildingConversation);
+
                     switch(action){
-                        case OPEN_VISIBLE -> {
+                        case WAIT -> {
+                            if(o.state==TransportState.CONVERSATION_SEARCH && searchQueryIssued){
+                                searchMisses++;
+                                schedule(RESPONSE_DELAY_MS);
+                            }else{
+                                schedule(STEP_DELAY_MS);
+                            }
+                        }
+                        case BACK -> {
+                            if(!performGlobalAction(GLOBAL_ACTION_BACK)){
+                                retryAdaptive("Gemini no aceptó volver desde el estado observado.");return;
+                            }
+                            routeReplans++;
+                            if(routeReplans>MAX_ROUTE_REPLANS){
+                                failUpdate("El transporte agotó su presupuesto de recuperación semántica.");return;
+                            }
+                            schedule(STEP_DELAY_MS);
+                        }
+                        case OPEN_CONVERSATION_LIST -> {
+                            if(transport.openConversationList(r)){
+                                retries=0;schedule(STEP_DELAY_MS);return;
+                            }
+                            retryAdaptive("No pude abrir de forma semántica la lista de conversaciones de Gemini.");
+                        }
+                        case OPEN_VISIBLE_CANONICAL -> {
                             if(transport.openCanonicalConversation(r,canonicalTitle)){
-                                rebuildingConversation=false;canonicalRoute="drawer-title";go(7);return;
+                                openingCanonical=true;
+                                rebuildingConversation=false;
+                                canonicalRoute=searchAttempted?"adaptive-search-result":"adaptive-visible";
+                                retries=0;schedule(STEP_DELAY_MS);return;
                             }
-                            retryAdaptive("La conversación canónica estaba visible pero no pudo abrirse.");return;
+                            retryAdaptive("La conversación canónica estaba visible pero no pudo abrirse.");
                         }
-                        case SEARCH_KNOWN_ONCE -> {
+                        case OPEN_SEARCH -> {
                             if(transport.openConversationSearch(r)){
-                                searchAttempted=true;go(4);return;
+                                searchAttempted=true;searchQueryIssued=false;searchMisses=0;
+                                retries=0;schedule(STEP_DELAY_MS);return;
                             }
-                            retryAdaptive("Aleyon conocía el chat canónico, pero Gemini no expuso búsqueda verificable.");return;
+                            retryAdaptive("Aleyon conocía el chat canónico, pero Gemini no expuso búsqueda verificable.");
                         }
-                        case REBUILD_DIRECT,REBUILD_AFTER_SEARCH -> {
+                        case TYPE_SEARCH_QUERY -> {
+                            if(transport.searchConversation(r,canonicalTitle)){
+                                searchQueryIssued=true;searchMisses=0;
+                                retries=0;schedule(RESPONSE_DELAY_MS);return;
+                            }
+                            retryAdaptive("No pude entregar la consulta al buscador semántico de conversaciones.");
+                        }
+                        case CREATE_NORMAL_CHAT -> {
                             conversations.markMissing(profile);
                             if(transport.createNormalConversation(r)){
-                                rebuildingConversation=true;
-                                canonicalRoute=action==CanonicalChatRoutingPolicy.Action.REBUILD_DIRECT
-                                        ?"migration-direct-rebuild":"search-miss-rebuild";
-                                go(7);return;
+                                rebuildingConversation=true;openingCanonical=false;
+                                canonicalRoute=searchAttempted
+                                        ?"adaptive-search-miss-rebuild"
+                                        :"adaptive-migration-rebuild";
+                                retries=0;schedule(STEP_DELAY_MS);return;
                             }
                             retryAdaptive("No pude crear un chat normal seguro para reconstruir la continuidad local.");
                         }
-                    }
-                }
-                case 4 -> {
-                    TransportObservation o=observe();
-                    if(o.state!=TransportState.CONVERSATION_SEARCH){
-                        retryAdaptive("Gemini no confirmó una superficie de búsqueda antes de escribir.");return;
-                    }
-                    if(transport.searchConversation(root(),canonicalTitle)){advance();return;}
-                    retryAdaptive("No pude escribir la búsqueda del chat canónico.");
-                }
-                case 5 -> {
-                    AccessibilityNodeInfo r=root();TransportObservation o=observe();
-                    if(o.state!=TransportState.CONVERSATION_SEARCH){
-                        retryAdaptive("Gemini salió de búsqueda antes de resolver un resultado verificable.");return;
-                    }
-                    if(transport.hasCanonicalConversation(r,canonicalTitle)){
-                        if(transport.openCanonicalConversation(r,canonicalTitle)){
-                            rebuildingConversation=false;canonicalRoute="drawer-search";go(7);return;
+                        case COMPLETE_REUSE -> {
+                            rebuildingConversation=false;openingCanonical=false;go(7);
                         }
-                        retryAdaptive("Encontré el chat canónico en búsqueda, pero no pude abrirlo.");return;
+                        case COMPLETE_REBUILD -> {
+                            rebuildingConversation=true;openingCanonical=false;go(7);
+                        }
+                        case FAIL_CLOSED -> {
+                            compatibility.recordFailure(profile.id,
+                                    "adaptive-navigation-unknown | "+o.state+" | "+o.evidence);
+                            if(++routeReplans>MAX_ROUTE_REPLANS){
+                                failUpdate("Gemini cambió a una superficie que Aleyon no puede verificar con seguridad.");return;
+                            }
+                            schedule(STEP_DELAY_MS);
+                        }
                     }
-                    if(++searchMisses<4){schedule(RESPONSE_DELAY_MS);return;}
-                    // One bounded miss means the provider cache is gone.
-                    conversations.markMissing(profile);
-                    performGlobalAction(GLOBAL_ACTION_BACK);
-                    replan("El chat canónico conocido no apareció en búsqueda; reconstruyendo desde Aleyon.",2);
                 }
                 case 7 -> {
                     AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r,canonicalTitle);
