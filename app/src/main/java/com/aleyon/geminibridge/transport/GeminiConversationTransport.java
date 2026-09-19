@@ -32,6 +32,9 @@ public final class GeminiConversationTransport {
     public String collectConversationText(AccessibilityNodeInfo root){return GeminiUi.collectAllText(root);}
     public boolean scrollConversation(AccessibilityNodeInfo root){return GeminiUi.scrollForward(root);}
     public boolean openChatOptions(AccessibilityNodeInfo root){return GeminiUi.clickMoreOptionsMenu(root);}
+    public boolean isRenameActionVisible(AccessibilityNodeInfo root){return GeminiUi.isRenameActionVisible(root);}
+    public boolean isRenameEditorVisible(AccessibilityNodeInfo root){return GeminiUi.isRenameEditorVisible(root);}
+    public boolean isCanonicalTitlePrepared(AccessibilityNodeInfo root,String title){return GeminiUi.isConversationTitlePrepared(root,title);}
     public boolean chooseRename(AccessibilityNodeInfo root){return GeminiUi.clickRenameConversation(root);}
     public boolean setCanonicalTitle(AccessibilityNodeInfo root,String title){return GeminiUi.setConversationTitle(root,title);}
     public boolean saveCanonicalTitle(AccessibilityNodeInfo root){return GeminiUi.saveConversationTitle(root);}
