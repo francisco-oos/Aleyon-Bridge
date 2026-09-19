@@ -37,7 +37,7 @@ The old Windows build script and GitHub workflows were still pinned to `0.4.0-al
 
 ## Automated gate
 
-Expected categories: package/version consistency, Java core policies, 60-profile/360-session simulation, static architecture QA, JS/native contract QA, security QA, Windows/Linux/CI build parity and full Java stub compilation.
+Completed and green: package/version consistency, Java core policies, 60-profile/360-session simulation, static architecture QA, JS/native contract QA, security QA, Windows/Linux/CI build parity, full Java stub compilation, and real Android `clean assembleDebug` on GitHub Actions with SDK 35 / Gradle 8.9 / Java 17. The final branch commit `972205076a00cba1b244bc32eef258998a2b72b1` also passed the independent QA and Build APK workflows.
 
 ## Physical gate
 

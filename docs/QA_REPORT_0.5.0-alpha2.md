@@ -19,6 +19,9 @@
 - Windows/Linux/CI build-runner parity: **PASS — 15 core source files / 5 shared QA stages**
 - full production Java compile against Android stubs: **PASS — 34 production Java files**
 - source package final preflight: **PASS**
+- GitHub Actions real Android build (`SDK 35`, `Gradle 8.9`, Java 17): **PASS**
+- final branch QA workflow on commit `972205076a00cba1b244bc32eef258998a2b72b1`: **PASS**
+- final branch Build APK workflow on the same commit: **PASS**, APK artifact produced and verified non-empty
 
 ## What the matrix proves
 
@@ -53,6 +56,6 @@ The 0.5 source and old build surfaces had drifted: Windows/CI still referenced `
 
 ## What is not proven by simulation
 
-The local environment has no Android SDK/Gradle network toolchain, so the real Android `assembleDebug` is delegated to GitHub Actions after branch upload. Physical provider behavior also remains a separate gate: current Gemini drawer/search/rename/attachment/Live controls, actual PDF/image analysis quality, account-specific limits and OEM accessibility behavior require device tests.
+The real Android build is now proven independently in GitHub Actions: the materialization gate and the final branch Build APK workflow both completed `clean assembleDebug` successfully with Android SDK 35 / Gradle 8.9 / Java 17. Physical provider behavior remains a separate gate: current Gemini drawer/search/rename/attachment/Live controls, actual PDF/image analysis quality, account-specific limits and OEM accessibility behavior require device tests.
 
 See `docs/NUBIA_QA_PLAN.md` for the physical gate.

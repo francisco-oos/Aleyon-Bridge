@@ -12,6 +12,7 @@
 - Sanitizes canonical conversation titles and imported profile ids.
 - Disables Android backup for local learner memory and hardens the local WebView against remote/mixed navigation.
 - Documents current Gemini file/Live capability boundary and Artemis upstream command-injection issues that must remain outside the APK.
+- Confirms the final `develop/artemis-transport` candidate with independent GitHub Actions QA plus real Android `clean assembleDebug` on SDK 35 / Gradle 8.9 / Java 17, producing a verified debug APK artifact.
 
 ## 0.5.0-alpha1 — adaptive transport / canonical Gemini conversation
 

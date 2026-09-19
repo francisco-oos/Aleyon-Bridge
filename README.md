@@ -121,6 +121,6 @@ Run the same suite on Linux/macOS or Windows:
 bash tests/run_core_tests.sh
 ```
 
-The suite includes package/version parity, Java core tests, a 60-profile/360-session contract matrix, static architecture QA, WebView/native interaction QA, security QA, Windows/Linux build-runner parity and full Java stub compilation.
+The suite includes package/version parity, Java core tests, a 60-profile/360-session contract matrix, static architecture QA, WebView/native interaction QA, security QA, Windows/Linux build-runner parity and full Java stub compilation. The published `develop/artemis-transport` candidate also passed real Android `clean assembleDebug` in GitHub Actions with Android SDK 35, Gradle 8.9 and Java 17; the resulting APK artifact was verified and uploaded.
 
 Physical Gemini behavior is still a separate promotion gate. See `docs/NUBIA_QA_PLAN.md`.
