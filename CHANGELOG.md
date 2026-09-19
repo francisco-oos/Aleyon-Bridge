@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0-alpha3 — disposable Gemini sessions / simplified Artemis lifecycle
+
+- Removes canonical Gemini conversations, provider chat search/reuse/rebuild and automated rename.
+- Removes `ConversationRegistry`, `CanonicalConversationPolicy`, `CanonicalChatRoutingPolicy` and `RecoveryPlanner` from production.
+- Removes the user-facing **Recuperar** action and recovery command/state.
+- Every explicit Bridge start now creates/verifies a fresh normal Gemini chat, sends the locally-owned profile + continuity capsule, then enters Chat or Live.
+- Gemini-generated conversation titles are ignored by the runtime.
+- Collapses embedded Artemis behavior to two phase-aware tasks: `START_SESSION` and `CLOSE_SESSION`.
+- `ArtemisRoutineMemory` now stores phase + semantic state + action so identical `NORMAL_CHAT` observations cannot replay the wrong step.
+- Close flow still verifies transcript stability, asks Gemini for the short debrief in the same chat and commits summary/evidence/next objective locally.
+- Adds static/interaction guards so canonical-chat, rename and recovery logic cannot silently return.
+- Updates architecture/ADR documentation to make provider history explicitly disposable.
+
 ## 0.5.0-alpha2 — exhaustive validation / build parity / safe material boundary
 
 - Makes `VERSION` authoritative across Windows build output and CI; removes stale `0.4.0-alpha8` build pinning.
