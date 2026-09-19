@@ -116,8 +116,8 @@ check('android.permission.RECORD_AUDIO' not in manifest,'Bridge must not request
 check('android.permission.INTERNET' not in manifest,'Bridge unexpectedly requests INTERNET')
 check('SYSTEM_ALERT_WINDOW' not in manifest,'Broad overlay permission introduced')
 check('POST_NOTIFICATIONS' in manifest and 'NotificationHelper.postSessionClosed' in service,'Session close notification regression')
-check('versionCode 24' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
-check(version=='0.5.0-alpha2','VERSION file mismatch')
+check('versionCode 25' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
+check(version=='0.5.0-alpha3','VERSION file mismatch')
 
 # No obsolete prompt pipeline or upgrade-only command aliases
 prompt_dir=ROOT/'app/src/main/assets/prompts'
