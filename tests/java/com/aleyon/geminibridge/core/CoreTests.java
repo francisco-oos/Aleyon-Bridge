@@ -3,7 +3,7 @@ package com.aleyon.geminibridge.core;
 public final class CoreTests {
     private static int passed=0;
     public static void main(String[] args){
-        testNaming();testCanonicalConversation();testTransportState();testRecovery();testReconciliation();testDebriefParser();
+        testNaming();testCanonicalConversation();testCanonicalChatRouting();testTransportState();testRecovery();testReconciliation();testDebriefParser();
         testDebriefRejectIncomplete();testTextDelta();testSchemaV5();testScreenBounds();testLedger();testDiagnostics();
         testMaterialPolicy();testProfileMatrix();testAdversarialInputs();
         System.out.println("PASS core tests: "+passed);
@@ -17,8 +17,21 @@ public final class CoreTests {
         eq(CanonicalConversationPolicy.Resolution.REUSE,CanonicalConversationPolicy.resolve(true));
         eq(CanonicalConversationPolicy.Resolution.REBUILD,CanonicalConversationPolicy.resolve(false));passed++;
     }
+    private static void testCanonicalChatRouting(){
+        eq(CanonicalChatRoutingPolicy.Action.REBUILD_DIRECT,
+                CanonicalChatRoutingPolicy.decide(false,false,false));
+        eq(CanonicalChatRoutingPolicy.Action.OPEN_VISIBLE,
+                CanonicalChatRoutingPolicy.decide(true,true,false));
+        eq(CanonicalChatRoutingPolicy.Action.SEARCH_KNOWN_ONCE,
+                CanonicalChatRoutingPolicy.decide(true,false,false));
+        eq(CanonicalChatRoutingPolicy.Action.REBUILD_AFTER_SEARCH,
+                CanonicalChatRoutingPolicy.decide(true,false,true));
+        passed++;
+    }
     private static void testTransportState(){
-        eq(TransportState.NORMAL_CHAT,TransportState.valueOf("NORMAL_CHAT"));passed++;
+        eq(TransportState.NORMAL_CHAT,TransportState.valueOf("NORMAL_CHAT"));
+        eq(TransportState.CONVERSATION_SEARCH,TransportState.valueOf("CONVERSATION_SEARCH"));
+        passed++;
     }
     private static void testRecovery(){
         eq(RecoveryPlanner.RecoveryAction.NONE,RecoveryPlanner.plan(SessionStage.READY,false));
