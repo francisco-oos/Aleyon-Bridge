@@ -25,9 +25,6 @@ import com.aleyon.geminibridge.transport.TransportObservation;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.util.ArrayDeque;
-import java.util.List;
-import java.util.Queue;
 import java.util.UUID;
 
 /**
@@ -127,7 +124,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
             case CLOSING_SESSION -> "Cerrando";
             case WAITING_TRANSCRIPT, COMMITTING -> "Guardando";
             case ANALYZING -> "Resumiendo";
-            case RECOVERING -> "Listo";
             case ERROR, AMBIGUOUS_USER_REQUIRED, USER_ACTION_REQUIRED -> "Requiere atención";
             case APP_UPDATE_REQUIRED -> "Compatibilidad";
         };
@@ -177,7 +173,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         },4300L);
     }
 
-    /** Explicit START always creates a fresh local session transaction; provider chat may be reused. */
+    /** Explicit START always creates a fresh local session transaction in a fresh provider chat. */
     private void startFreshSession(ProfileSpec p,String mode){
         SessionStage s=journal.stage(p.id);
         AccessibilityNodeInfo current=resolveGeminiRoot();
@@ -203,7 +199,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
 
     private void abandonUnfinishedRuntime(ProfileSpec p){
         Runner r=runner;if(r!=null&&!r.finished)r.abortWithoutCommit();
-        journal.clearError(p.id);journal.clearRecoverableStage(p.id);journal.clearActiveSession(p.id);
+        journal.clearError(p.id);journal.clearActiveSession(p.id);
         journal.stage(p.id,SessionStage.READY);clearActive(p);if(overlay!=null)overlay.hide();
     }
 
@@ -224,7 +220,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
     }
 
     private void finishReadyOutsideRunner(ProfileSpec p){
-        journal.clearError(p.id);journal.clearRecoverableStage(p.id);journal.stage(p.id,SessionStage.READY);
+        journal.clearError(p.id);journal.stage(p.id,SessionStage.READY);
         journal.clearActiveSession(p.id);clearActive(p);if(overlay!=null)overlay.hide();launchAleyon();
     }
 
@@ -335,7 +331,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private void cancelToReady(){
             finished=true;handler.removeCallbacks(pumpRunnable);
             try{AccessibilityNodeInfo r=root();if(r!=null)transport.clearComposer(r);}catch(Exception ignored){}
-            journal.clearError(profile.id);journal.clearRecoverableStage(profile.id);journal.stage(profile.id,SessionStage.READY);
+            journal.clearError(profile.id);journal.stage(profile.id,SessionStage.READY);
             journal.clearActiveSession(profile.id);clearActive(profile);
             if(overlay!=null)overlay.hide();launchAleyon();
         }
@@ -378,12 +374,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private AccessibilityNodeInfo root(){return resolveGeminiRoot();}
         private void moveStart(StartPhase next){startPhase=next;retries=0;schedule(0);}
         private void moveClose(ClosePhase next){closePhase=next;retries=0;schedule(0);}
-        private boolean retry(String reason,boolean response){
-            retries++;
-            if(retries>MAX_UI_RETRIES){fail(reason);return false;}
-            schedule(response?RESPONSE_OBSERVE_FALLBACK_MS:OBSERVE_FALLBACK_MS);return true;
-        }
-        private boolean retryMarker(String reason){transport.scrollConversation(root());return retry(reason,true);}
         private String newSessionId(){return "session-"+UUID.randomUUID().toString().replace("-","").substring(0,16);}
 
         private TransportObservation observe(){
@@ -712,29 +702,22 @@ public final class AleyonAccessibilityService extends AccessibilityService
         }
 
         private void finishReady(){
-            finished=true;journal.clearError(profile.id);journal.clearRecoverableStage(profile.id);
+            finished=true;journal.clearError(profile.id);
             journal.stage(profile.id,SessionStage.READY);journal.clearActiveSession(profile.id);clearActive(profile);
             if(overlay!=null)overlay.hide();launchAleyon();
         }
         private void failUpdate(String msg){
             recordDiagnostic(profile,"APP_UPDATE_REQUIRED",msg);
-            journal.clearRecoverableStage(profile.id);
+            
             journal.appendErrorHistory(profile.id,msg,SessionStage.APP_UPDATE_REQUIRED);
             journal.error(profile.id,msg,SessionStage.APP_UPDATE_REQUIRED);finished=true;
             if(overlay!=null)overlay.markNeedsAttention();launchAleyon();
         }
 
         private void fail(String msg){
-            recordDiagnostic(profile,"FAIL",msg);journal.clearRecoverableStage(profile.id);
+            recordDiagnostic(profile,"FAIL",msg);
             journal.appendErrorHistory(profile.id,msg,SessionStage.ERROR);journal.error(profile.id,msg,SessionStage.ERROR);
             finished=true;if(overlay!=null)overlay.markNeedsAttention();launchAleyon();
         }
-        private void failAmbiguous(String msg){
-            recordDiagnostic(profile,"AMBIGUOUS",msg);journal.clearRecoverableStage(profile.id);
-            journal.appendErrorHistory(profile.id,msg,SessionStage.AMBIGUOUS_USER_REQUIRED);
-            journal.error(profile.id,msg,SessionStage.AMBIGUOUS_USER_REQUIRED);finished=true;
-            if(overlay!=null)overlay.markNeedsAttention();launchAleyon();
-        }
-
     }
 }
