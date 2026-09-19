@@ -223,3 +223,16 @@ Do not promote alpha3 to the stable baseline until:
 - Aleyon debe mostrar **Vuelve al chat de esta sesión…** y NO guardar el cierre del chat anterior.
 - Volver al chat actual: Aleyon debe reanudar la espera y aceptar sólo el cierre de esa sesión.
 - Tocar la notificación: Aleyon debe abrir directamente el cierre completo más reciente, con acceso al historial.
+
+
+## 0.5.0-alpha7 — comparación Nubia/Samsung (2026-09-19)
+
+- **Samsung:** comprobar que Live inicia y conversa normalmente; el foco de regresión es el cierre, no el audio/Live.
+- Cerrar Live y verificar que Bridge espera al menos 4 s de asentamiento antes de pedir el debrief.
+- Caso A: Gemini muestra pensamiento y `Responder ahora`: después del umbral Bridge debe usar esa capacidad una sola vez y obtener el cierre.
+- Caso B: el globo del debrief aparece pero Gemini no inicia respuesta: después de 20 s sin progreso debe emitirse un único empujón corto y continuar esperando.
+- Confirmar que nunca aparecen múltiples copias del debrief/nudge y que el fallback local sigue limitado por el timeout largo.
+- **Nubia/u otro intento con Live visible pero no detectado:** repetir con placeholder del compositor visible; Artemis no debe confundir el hint con texto escrito.
+- Mientras Gemini aún está generando la respuesta inicial al contexto, Artemis debe esperar y no gastar el presupuesto de scroll.
+- Cuando Gemini termine y Live realmente quede fuera del viewport, Artemis debe explorar y reobservar.
+- Repetir al menos 5 ciclos por teléfono para comprobar convergencia, no sólo un camino feliz.

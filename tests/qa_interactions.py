@@ -39,8 +39,17 @@ check('GeminiStateObserver.observe' in service and 'journal.baselineText' in ser
 check('artemisStartAgent.nextLive(o,liveExploreForwardExhausted)' in service
       and 'exploreConversationForward' in service and 'exploreConversationBackward' in service,
       'Off-screen Live exploration missing')
+check('transport.responseInProgress(r)' in service
+      and service.index('transport.responseInProgress(r)') < service.index('artemisStartAgent.nextLive(o,liveExploreForwardExhausted)'),
+      'START_SESSION does not separate Gemini generating from off-screen Live')
 check('DEBRIEF_IDLE_TIMEOUT_MS' in service and 'debriefLastProgressAtMs' in service,
       'Slow-network debrief progress handling missing')
+check('POST_LIVE_SETTLE_MIN_MS' in service and 'postLiveChatObservedAtMs' in service,
+      'Post-Live settle gate missing')
+check('transport.hasRespondNow(r)' in service and 'transport.respondNow(r)' in service,
+      'Gemini thinking recovery missing')
+check('sessionDebriefNudge' in service and 'debriefNudgeIssued' in service,
+      'One-shot stalled-debrief recovery missing')
 check('SessionReportParser.parse' in service,'Close report verifier missing')
 check('learning.commitVerified' in service,'Local commit verification missing')
 check('NotificationHelper.postSessionClosed' in service,'Close notification missing')

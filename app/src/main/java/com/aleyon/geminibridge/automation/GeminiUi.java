@@ -863,6 +863,38 @@ public final class GeminiUi {
         return false;
     }
 
+    /** True while Gemini visibly exposes an in-flight response/thinking control. */
+    public static boolean isResponseInProgress(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        if (findAny(root, "Responder ahora", "Respond now",
+                "Detener respuesta", "Stop response", "Stop generating",
+                "Detener", "Stop") != null) return true;
+        AccessibilityNodeInfo slot = findByViewIdSuffix(root,
+                "assistant_robin_input_voice_chat_button_compose");
+        if (slot != null) {
+            Queue<AccessibilityNodeInfo> q = new ArrayDeque<>(); q.add(slot);
+            while (!q.isEmpty()) {
+                AccessibilityNodeInfo n = q.remove();
+                String id = n.getViewIdResourceName()==null?"":n.getViewIdResourceName().toLowerCase(Locale.ROOT);
+                String sig = norm(nodeText(n)+" "+(n.getContentDescription()==null?"":n.getContentDescription().toString()));
+                if ((id.contains("stop")||id.contains("cancel")
+                        ||sig.contains("stop response")||sig.contains("stop generating")
+                        ||sig.contains("detener respuesta"))
+                        && n.isEnabled()&&isActionablyVisible(n,root)) return true;
+                for(int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo c=n.getChild(i);if(c!=null)q.add(c);}
+            }
+        }
+        return false;
+    }
+
+    public static boolean hasRespondNow(AccessibilityNodeInfo root) {
+        return findAny(root, "Responder ahora", "Respond now") != null;
+    }
+
+    public static boolean clickRespondNow(AccessibilityNodeInfo root) {
+        return clickAnyExact(root, "Responder ahora", "Respond now");
+    }
+
     public static boolean hasVisibleGeminiLiveLauncher(AccessibilityNodeInfo root) {
         return !liveLauncherEvidence(root).equals("none");
     }
@@ -891,7 +923,10 @@ public final class GeminiUi {
         AccessibilityNodeInfo editable = chatComposer(root);
         if (editable == null) return null;
         CharSequence current = editable.getText();
-        if (current != null && !current.toString().trim().isEmpty()) return null;
+        // Compose can expose an empty-field placeholder through getText().
+        // Treat it as empty when the accessibility node says it is showing hint text.
+        if (current != null && !editable.isShowingHintText()
+                && !current.toString().trim().isEmpty()) return null;
         ComposerActions actions = composerActions(root);
         // Two distinct controls on the right are the field-observed normal-chat
         // signature (mic + Live). Requiring both prevents a single unlabeled mic

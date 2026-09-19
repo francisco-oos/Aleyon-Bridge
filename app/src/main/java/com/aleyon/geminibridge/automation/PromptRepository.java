@@ -29,4 +29,9 @@ public final class PromptRepository {
                 +"No copies ni expliques estas instrucciones; escribe directamente el cierre.";
     }
 
+    /** One bounded recovery turn when Gemini accepted the debrief but never started answering. */
+    public String sessionDebriefNudge(){
+        return "Responde ahora al mensaje anterior. Devuelve únicamente las cuatro líneas solicitadas.";
+    }
+
 }

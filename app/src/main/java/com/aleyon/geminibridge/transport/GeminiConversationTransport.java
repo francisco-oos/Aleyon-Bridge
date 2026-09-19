@@ -36,6 +36,18 @@ public final class GeminiConversationTransport {
         return GeminiUi.clickGeminiLive(root);
     }
 
+    public boolean responseInProgress(AccessibilityNodeInfo root){
+        return GeminiUi.isResponseInProgress(root);
+    }
+
+    public boolean hasRespondNow(AccessibilityNodeInfo root){
+        return GeminiUi.hasRespondNow(root);
+    }
+
+    public boolean respondNow(AccessibilityNodeInfo root){
+        return GeminiUi.clickRespondNow(root);
+    }
+
     public boolean exploreConversationForward(AccessibilityNodeInfo root){return GeminiUi.scrollForward(root);}
     public boolean exploreConversationBackward(AccessibilityNodeInfo root){return GeminiUi.scrollBackward(root);}
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0-alpha7 — convergencia física entre teléfonos / cierre recuperable
+
+- Separa dos fallos de campo que no son el mismo problema: un intento donde Artemis agotó la exploración de Live aunque el control terminó visible, y el Samsung donde Live sí conversó correctamente pero el debrief quedó enviado sin que Gemini generara respuesta.
+- START_SESSION distingue mejor una respuesta de Gemini todavía en curso de un Live realmente fuera del viewport. Mientras Gemini procesa, Artemis espera; sólo explora después.
+- El fallback estructural de Live respeta `isShowingHintText()` para que un placeholder accesible no parezca texto escrito y oculte falsamente la capacidad Live.
+- CLOSE_SESSION espera al menos 4 s de asentamiento tras salir de Live y no envía el debrief mientras Gemini siga mostrando una respuesta en curso.
+- Si Gemini entra en pensamiento prolongado y ofrece `Responder ahora` / `Respond now`, Bridge puede activarlo semánticamente una sola vez.
+- Si el globo del debrief fue aceptado pero durante 20 s no aparece respuesta ni señal de procesamiento, Bridge envía un único mensaje corto de recuperación en el mismo chat; no duplica el cierre indefinidamente.
+- El cierre sigue ligado a la evidencia de la sesión actual: cambiar a otro chat no permite consumir un resumen viejo.
+- ArtemisRoutineMemory continúa siendo local por instalación y sólo guarda secuencias semánticas exitosas. La consistencia entre teléfonos depende de percepción/adaptación semántica, no de compartir una ruta rígida entre dispositivos.
+
+
 ## 0.5.0-alpha6 — cierre ligado a la sesión / notificación detallada
 
 - Corrige el fallo físico donde, mientras Gemini tardaba en responder, cambiar a un chat anterior permitía que Aleyon interpretara un cierre viejo como el de la sesión actual.
