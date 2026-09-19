@@ -292,16 +292,30 @@ public final class GeminiUi {
         return null;
     }
 
-    public static boolean sendMessage(AccessibilityNodeInfo root, String text) {
+    /** True only when the verified normal composer contains exactly this payload. */
+    public static boolean composerContainsExactText(AccessibilityNodeInfo root, String text) {
+        AccessibilityNodeInfo editable = chatComposer(root);
+        if (editable == null) return false;
+        CharSequence current = editable.getText();
+        return current != null && (text == null ? "" : text).equals(current.toString());
+    }
+
+    /** Writes a payload but deliberately does not submit it. */
+    public static boolean writeComposer(AccessibilityNodeInfo root, String text) {
         AccessibilityNodeInfo editable = chatComposer(root);
         if (editable == null) return false;
         String wanted = text == null ? "" : text;
         CharSequence current = editable.getText();
-        if (current == null || !wanted.equals(current.toString())) {
-            if (!setText(editable, wanted)) return false;
-            // ACTION_SET_TEXT can rebuild the Robin action slot. Let the caller
-            // retry with a fresh accessibility tree instead of guessing here.
-            return false;
+        if (current != null && wanted.equals(current.toString())) return true;
+        return setText(editable, wanted);
+    }
+
+    public static boolean sendMessage(AccessibilityNodeInfo root, String text) {
+        if (!composerContainsExactText(root, text)) {
+            // ACTION_SET_TEXT rebuilds the Robin action slot. Keep this legacy
+            // helper two-phase; callers that need strong postconditions should
+            // use writeComposer() + clickSendAction() and re-observe.
+            return writeComposer(root, text) && false;
         }
         return clickSendAction(root);
     }
@@ -325,9 +339,17 @@ public final class GeminiUi {
 
         AccessibilityNodeInfo slot = findByViewIdSuffix(root,
                 "assistant_robin_input_voice_chat_button_compose");
-        if (slot != null && !subtreeLooksLikeLive(slot)) {
-            if (slot.isClickable() && isActionablyVisible(slot, root)
-                    && slot.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
+        if (slot != null && isActionablyVisible(slot, root)) {
+            /*
+             * Field evidence (2026-09-18): on the current Google-host build the
+             * compose slot can retain stale Live accessibility semantics after
+             * text is inserted even though the rendered control is the blue
+             * Send arrow. Because a non-empty verified composer is the
+             * precondition here, prefer the known compose action slot and let
+             * the caller verify the postcondition (composer emptied + history
+             * advanced). We never click this slot from an empty composer.
+             */
+            if (slot.isClickable() && slot.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
             AccessibilityNodeInfo unique = uniqueClickableDescendant(slot);
             if (unique != null && clickNodeOrClickableParent(unique)) return true;
         }
