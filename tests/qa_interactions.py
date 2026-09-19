@@ -44,6 +44,9 @@ check('transport.responseInProgress(r)' in service
       'START_SESSION does not separate Gemini generating from off-screen Live')
 check('DEBRIEF_IDLE_TIMEOUT_MS' in service and 'debriefLastProgressAtMs' in service,
       'Slow-network debrief progress handling missing')
+check('LIVE_EXIT_CONFIRM_MS' in service and 'liveExitObservedAtMs' in service
+      and 'Detectando fin de Live' in service,
+      'Live end is not automatically confirmed before close')
 check('POST_LIVE_QUIET_MS' in service and 'stableTranscriptSinceMs' in service,
       'Post-Live quiet-state gate missing')
 check('transport.hasRespondNow(r)' in service and 'transport.respondNow(r)' in service,

@@ -49,6 +49,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
     private static final int MAX_LIVE_EXPLORE_STALLS=6;
     private static final int MAX_LIVE_EXPLORE_MOVES=16;
     private static final int ARTEMIS_POLICY_VERSION=4;
+    private static final long LIVE_EXIT_CONFIRM_MS=900L;
     private static final long MAX_START_RUNTIME_MS=180_000L;
     private static final long MAX_CLOSE_RUNTIME_MS=360_000L;
     private static final long DEBRIEF_IDLE_TIMEOUT_MS=180_000L;
@@ -178,7 +179,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         }
         handler.postDelayed(()->{
             JSONObject report=new JSONObject();
-            try{report.put("schema","aleyon-gemini-passive-probe-v10").put("version","0.5.0-alpha8")
+            try{report.put("schema","aleyon-gemini-passive-probe-v10").put("version","0.5.0-alpha9")
                     .put("probeId",probeId).put("readOnly",true).put("sampleCount",samples.length()).put("samples",samples);}catch(Exception ignored){}
             getSharedPreferences("aleyon_probe",MODE_PRIVATE).edit().putString("last_probe",report.toString())
                     .putLong("last_probe_ts",System.currentTimeMillis()).putString("last_probe_id",probeId).apply();
@@ -327,6 +328,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private int debriefRetryWriteAttempts,debriefRetrySubmitAttempts;
         private String debriefRetryPayload="";
         private final long runnerStartedAtMs=System.currentTimeMillis();
+        private long liveExitObservedAtMs;
         private long closeStartedAtMs,debriefWaitStartedAtMs,debriefLastProgressAtMs,postLiveChatObservedAtMs;
         private String sessionEvidenceText="", debriefBaselineText="", contextBaselineText="";
         private final Runnable pumpRunnable=this::pump;
@@ -621,11 +623,26 @@ public final class AleyonAccessibilityService extends AccessibilityService
 
         private void pumpWait(){
             AccessibilityNodeInfo r=root();
-            if(!transport.isGeminiSurface(r)){schedule(OBSERVE_FALLBACK_MS);return;}
+            if(!transport.isGeminiSurface(r)){liveExitObservedAtMs=0L;schedule(OBSERVE_FALLBACK_MS);return;}
             if("CHAT".equals(sessionMode))return;
             TransportObservation o=GeminiStateObserver.observe(r);
-            if(o.state==TransportState.LIVE_ACTIVE)return;
-            if(o.state==TransportState.NORMAL_CHAT){beginClose();return;}
+            if(o.state==TransportState.LIVE_ACTIVE){
+                liveExitObservedAtMs=0L;
+                return;
+            }
+            if(o.state==TransportState.NORMAL_CHAT){
+                long now=System.currentTimeMillis();
+                if(liveExitObservedAtMs==0L){
+                    liveExitObservedAtMs=now;
+                    if(overlay!=null)overlay.showWorking(profile.label,"Detectando fin de Live…");
+                    schedule(OBSERVE_FALLBACK_MS);return;
+                }
+                if(now-liveExitObservedAtMs>=LIVE_EXIT_CONFIRM_MS){
+                    beginClose();return;
+                }
+                schedule(OBSERVE_FALLBACK_MS);return;
+            }
+            liveExitObservedAtMs=0L;
             schedule(OBSERVE_FALLBACK_MS);
         }
 

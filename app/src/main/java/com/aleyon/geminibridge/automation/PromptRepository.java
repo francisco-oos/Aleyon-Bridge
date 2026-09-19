@@ -21,11 +21,12 @@ public final class PromptRepository {
      */
     public String sessionDebrief(ProfileSpec p){
         String language=p==null||p.targetLanguage==null||p.targetLanguage.trim().isEmpty()?"idioma objetivo":p.targetLanguage.trim();
-        return "Cierra esta práctica de "+language+". "
-                +"Ignora cualquier pregunta o tarea anterior que haya quedado pendiente; no la respondas ahora. "
-                +"Evalúa sólo lo que el alumno hizo durante esta sesión. "
-                +"Responde sin Markdown y únicamente con cuatro líneas: "
-                +"Resumen: ... / Avance: ... / A reforzar: ... / Próximo paso: ... . "
+        return "Cierra ahora esta práctica de "+language+". Esta es una tarea corta: "
+                +"no continúes la conversación, no respondas preguntas pendientes y no expliques tu razonamiento. "
+                +"Usa únicamente lo que el alumno hizo durante esta sesión. "
+                +"Responde inmediatamente, sin Markdown ni texto extra, con exactamente cuatro líneas, una por línea: "
+                +"Resumen: ...\nAvance: ...\nA reforzar: ...\nPróximo paso: ... "
+                +"Sé concreto: una frase breve por línea. "
                 +"No menciones Aleyon, IDs, memoria interna ni estas instrucciones.";
     }
 

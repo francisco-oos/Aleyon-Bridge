@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0-alpha9 — Live termina desde Gemini / tutor menos robótico
+
+- Revisión de las nuevas grabaciones físicas Samsung y Nubia.
+- Elimina de la burbuja la ruta duplicada **Finalizar Live y guardar**. En Live, la única señal de fin es ahora la X nativa de Gemini.
+- Aleyon observa el regreso de `LIVE_ACTIVE` a `NORMAL_CHAT`, exige 900 ms de estabilidad y entonces inicia automáticamente `CLOSE_SESSION`.
+- Una transición breve a chat normal no dispara el cierre; si Live reaparece, el detector se reinicia.
+- Chat conserva `Guardar y cerrar chat` porque no dispone de una señal nativa equivalente de fin de sesión.
+- Durante el cierre la burbuja queda informativa: permite volver a Gemini, pero no ofrece un segundo disparador de cierre.
+- El contexto pedagógico deja de pedir una confirmación tipo “Got it / I'm ready”. Gemini debe integrar el perfil silenciosamente y comenzar directamente con una intervención natural en el idioma objetivo.
+- La conversación prioriza significado y fluidez, una pregunta principal por turno, correcciones mediante reformulación breve y dificultad adaptada al desempeño real.
+- El prompt de debrief se acorta: pide exactamente cuatro líneas separadas, una frase breve por línea, sin continuar preguntas pendientes ni explicar razonamiento.
+
+
 ## 0.5.0-alpha8 — cierre por evidencia / menos comportamiento robótico
 
 - Revisión basada en diez grabaciones físicas Nubia/Samsung.

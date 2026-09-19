@@ -33,6 +33,9 @@ check('MAX_RECENT_EVENTS=6' in capsule and 'MAX_SUMMARY=760' in capsule and 'MAX
 check('SESSION_ID=' not in capsule and 'PROFILE_ID=' not in capsule and 'SCHEMA_VERSION=' not in capsule,'Internal session identifiers leaked into visible context')
 check('No inventes recuerdos' in capsule,'Memory anti-fabrication rule missing')
 check('Aleyon conserva la memoria y el progreso' in capsule,'Aleyon memory ownership rule missing')
+check("No digas 'entendido'" in capsule and 'una sola pregunta principal por turno' in capsule,'Tutor prompt still encourages robotic acknowledgement/questionnaires')
+check('Integra este bloque en silencio' in capsule and 'no lo confirmes' in capsule,'Context capsule is not silent/meta-free')
+check('exactamente cuatro líneas, una por línea' in prompt and 'una frase breve por línea' in prompt,'Debrief prompt is not compact/deterministic')
 check('sessionDebrief' in prompt and 'Resumen:' in prompt and 'Avance:' in prompt and 'A reforzar:' in prompt and 'Próximo paso:' in prompt,'Human-readable close debrief contract missing')
 check('ALEYON_REPORT_BEGIN' not in production and 'ALEYON_REPORT_END' not in production and 'EVENT|' not in prompt,'Machine report protocol leaked into visible runtime')
 check('lastSessionText' in store and 'sessionEvidenceText' in service,'Current-session transcript delta is not retained locally')
@@ -128,7 +131,9 @@ check('Vuelve al chat de esta sesión' in close_flow,'Conversation drift does no
 check('DEBRIEF_RESPONSE_TIMEOUT_MS' not in service,'Old fixed 45-second debrief timeout returned')
 check('if(r.isClosing())return;' in service and 'if(mode==Mode.CLOSE)return;' in service,'Repeated close can restart an in-flight close')
 check(close_flow.index('artemisCloseAgent.complete()') < close_flow.index('moveClose(ClosePhase.WAIT_DEBRIEF)'),'Artemis close routine is not saved before waiting for Gemini cognition')
-check('Finalizar Live y guardar' in overlay and 'Guardar y cerrar sesión' in overlay and 'Cierre en curso…' in overlay,'Bubble close controls are not state-aware')
+check('Finalizar Live y guardar' not in overlay,'Live still exposes a duplicate manual close path in the bubble')
+check('cierra Live con la X de Gemini' in overlay and 'Guardar y cerrar chat' in overlay,'Bubble does not explain native Live end / manual Chat close split')
+check('LIVE_EXIT_CONFIRM_MS=900L' in service and 'liveExitObservedAtMs' in service and 'Detectando fin de Live' in service,'Automatic Live-end confirmation gate missing')
 check('transport.sendContext(' not in service,'Legacy monolithic message sender still used by runtime')
 check('stableTranscriptSinceMs' in service and 'current.equals(stableTranscriptSnapshot)' in service and 'POST_LIVE_QUIET_MS' in service,'Transcript close does not use observed stability')
 check('TRANSCRIPT_SETTLE_MS' not in service,'Fixed transcript settling delay returned')
@@ -161,8 +166,8 @@ notification=read('app/src/main/java/com/aleyon/geminibridge/automation/Notifica
 check('EXTRA_OPEN_SUMMARY_PROFILE' in notification and 'tapIntent.putExtra' in notification and 'FLAG_ACTIVITY_SINGLE_TOP' in notification,'Notification tap is not bound to a profile summary')
 check('captureSummaryIntent' in main and 'onNewIntent' in main and 'NotificationHelper.EXTRA_OPEN_SUMMARY_PROFILE' in main,'MainActivity does not consume notification summary intents')
 check('openPendingSummary()' in html,'Cold/resumed app cannot open a pending detailed summary')
-check('versionCode 30' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
-check(version=='0.5.0-alpha8','VERSION file mismatch')
+check('versionCode 31' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
+check(version=='0.5.0-alpha9','VERSION file mismatch')
 
 # No obsolete prompt pipeline or upgrade-only command aliases
 prompt_dir=ROOT/'app/src/main/assets/prompts'

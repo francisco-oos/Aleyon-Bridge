@@ -462,10 +462,10 @@ public final class OverlayController {
         if(inLive||inChat||closing){
             TextView hint=new TextView(service);
             hint.setText(inLive
-                    ? "Al cerrar, Aleyon finalizará Live y guardará el progreso del chat actual."
+                    ? "Cuando termines, cierra Live con la X de Gemini. Aleyon detectará el final y guardará automáticamente."
                     : inChat
-                        ? "Al cerrar, Aleyon guardará el progreso de este chat."
-                        : "Cierre en curso. Si Gemini tarda por la conexión, Aleyon seguirá esperando y guardará al recibir un resumen verificable.");
+                        ? "Cuando termines este chat, usa «Guardar y cerrar chat»."
+                        : "Cierre en curso. Puedes volver a Gemini; Aleyon seguirá observando y guardará al recibir un resumen verificable.");
             hint.setTextSize(12f);
             hint.setTextColor(Color.rgb(70,82,105));
             hint.setPadding(0,8,0,10);
@@ -478,17 +478,16 @@ public final class OverlayController {
         back.setOnClickListener(v -> { hidePanel(); listener.onReturnToGemini(); });
         box.addView(back);
 
-        Button close = new Button(service);
-        close.setAllCaps(false);
-        if(closing){
-            // No listener while closing: the button is informational and cannot
-            // restart the close transaction.
-            close.setText("Cierre en curso…");
-        }else{
-            close.setText(inLive?"Finalizar Live y guardar":inChat?"Guardar y cerrar sesión":"Cancelar preparación");
+        // Live has one natural end signal: Gemini's own X. Duplicating that
+        // action in the Aleyon bubble created two competing close paths.
+        // Chat has no equivalent native end signal, so it keeps manual close.
+        if(inChat || (!inLive && !closing)){
+            Button close = new Button(service);
+            close.setAllCaps(false);
+            close.setText(inChat?"Guardar y cerrar chat":"Cancelar preparación");
             close.setOnClickListener(v -> { hidePanel(); listener.onCloseRequested(); });
+            box.addView(close);
         }
-        box.addView(close);
 
         panel = box;
         box.setOnTouchListener((v,event) -> {

@@ -46,6 +46,7 @@ CLOSE_SURFACES=["live-active","chat-active","user-ended-live","app-backgrounded"
 VIEWPORT_CASES=["live-visible","live-offscreen-forward","live-offscreen-backtrack"]
 NETWORK_CASES=["fast","slow","streaming","timeout","accepted-no-response","invalid-old-answer","thinking-with-respond-now"]
 LIVE_READINESS_CASES=["live-visible","reply-generating","live-offscreen-after-reply"]
+LIVE_EXIT_CASES=["still-live","transient-normal","stable-normal"]
 
 @dataclass
 class Memory:
@@ -163,8 +164,22 @@ def run():
 
     close_cases=0; network_close_cases=0; viewport_cases=0; cross_chat_rejections=0
     debrief_full_retries=0; invalid_response_retries=0; respond_now_recoveries=0; post_live_settle_cases=0; live_readiness_cases=0
+    live_exit_cases=0; automatic_live_closes=0
     forbidden_close_actions={'CREATE_NORMAL_CHAT','SEARCH_HISTORY','RENAME_CHAT'}
     for p in profiles:
+        for exit_case in LIVE_EXIT_CASES:
+            live_exit_cases+=1
+            if exit_case=='still-live':
+                action='WAIT'
+            elif exit_case=='transient-normal':
+                action='WAIT'
+            else:
+                action='AUTO_CLOSE'
+                automatic_live_closes+=1
+            if exit_case!='stable-normal' and action!='WAIT':
+                errors.append(f'false automatic Live close: {p.lang}/{exit_case}')
+            if exit_case=='stable-normal' and action!='AUTO_CLOSE':
+                errors.append(f'missed automatic Live close: {p.lang}')
         for readiness in LIVE_READINESS_CASES:
             live_readiness_cases+=1
             if readiness=='reply-generating': action='WAIT'
@@ -236,6 +251,7 @@ def run():
           f'fail_closed_probes={fail_closed}, debrief_fallbacks={debrief_fallbacks}, '
           f'close_cases={close_cases}, network_close_cases={network_close_cases}, '
           f'cross_chat_rejections={cross_chat_rejections}, live_readiness_cases={live_readiness_cases}, '
+          f'live_exit_cases={live_exit_cases}, automatic_live_closes={automatic_live_closes}, '
           f'post_live_settle_cases={post_live_settle_cases}, debrief_full_retries={debrief_full_retries}, '
           f'invalid_response_retries={invalid_response_retries}, respond_now_recoveries={respond_now_recoveries}, '
           f'version_families={len(VERSION_FAMILIES)}')

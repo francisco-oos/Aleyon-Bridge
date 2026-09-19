@@ -249,3 +249,16 @@ Do not promote alpha3 to the stable baseline until:
 - Verificar que una respuesta genérica como `Sesión finalizada` NO se almacena como evaluación pedagógica si no contiene las cuatro etiquetas requeridas.
 - En Samsung, antes de probar, confirmar que no aparece `Waiting For Debugger`; el instalador USB ejecuta `adb shell am clear-debug-app` tras instalar.
 - Ejecutar cinco cierres Nubia y cinco Samsung, incluyendo Live normal, `stop`, cambio inglés/español e imagen.
+
+
+## 0.5.0-alpha9 — cierre natural por X de Gemini y prompt conversacional (2026-09-19)
+
+- En una sesión Live abrir la burbuja: **no debe existir** `Finalizar Live y guardar`.
+- Terminar Live únicamente con la X nativa de Gemini. Aleyon debe mostrar brevemente `Detectando fin de Live…` y comenzar el guardado sin otra intervención.
+- Provocar una transición visual breve y volver a Live si es posible: no debe cerrar hasta que `NORMAL_CHAT` permanezca estable al menos 900 ms.
+- Repetir 5 ciclos Samsung y 5 ciclos Nubia, incluyendo sesiones muy cortas de 20–60 s.
+- Comprobar que la primera respuesta al contexto ya no sea `Got it`, `I'm ready`, `Entendido` ni una explicación del perfil; debe iniciar directamente una conversación natural.
+- Hacer errores deliberados: Gemini debe responder primero al significado y corregir con una reformulación breve sin convertir cada turno en una lección.
+- Confirmar que hace como máximo una pregunta principal por turno y que aprovecha intereses/próximo objetivo sin anunciar una agenda pedagógica.
+- En Chat (no Live) confirmar que sigue disponible `Guardar y cerrar chat`.
+- Después de cerrar Live comprobar debrief, commit local, notificación y detalle de sesión.

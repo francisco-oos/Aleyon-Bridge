@@ -1,9 +1,9 @@
 {
   "product": "Aleyon Bridge",
-  "version": "0.5.0-alpha8",
-  "version_code": 30,
+  "version": "0.5.0-alpha9",
+  "version_code": 31,
   "development_source_of_truth_branch": "develop/artemis-transport",
-  "runtime_basis": "Two Artemis task loops: fresh-chat start with policy-versioned semantic exploration plus posted-message verification and evidence-bound same-chat close with self-contained retry",
+  "runtime_basis": "Two Artemis task loops: fresh-chat start with policy-versioned semantic exploration plus native-X automatic Live-end detection and evidence-bound same-chat close with self-contained retry",
   "learning_basis": "Aleyon local continuity capsule + evidence ledger + Artemis transport routine memory + disposable Gemini provider sessions",
   "memory_owner": "Aleyon local",
   "session_engine": "official Gemini Android app",
