@@ -5,7 +5,7 @@
  *
  * Aleyon Bridge adaptation of the bounded-memory/retry ideas used by
  * Google Artemis StepMemoryService. This derivative stores only successful
- * semantic navigation routines; it stores no learner content.
+ * semantic transport routines; it stores no learner content.
  */
 package com.aleyon.geminibridge.artemis;
 
@@ -21,10 +21,17 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** Persistent semantic routine memory for the embedded Artemis transport. */
+/**
+ * Persistent semantic routine memory for the embedded Artemis transport.
+ *
+ * A routine is phase-aware: NORMAL_CHAT can legitimately mean different
+ * things while creating a fresh chat, delivering context or launching Live.
+ * Storing the phase prevents a learned action from leaking into a different
+ * part of the same task.
+ */
 public final class ArtemisRoutineMemory {
-    private static final String PREFS="aleyon_artemis_routines_v1";
-    private static final int MAX_STEPS=24;
+    private static final String PREFS="aleyon_artemis_routines_v2";
+    private static final int MAX_STEPS=20;
     private final SharedPreferences prefs;
 
     public ArtemisRoutineMemory(Context context){
@@ -32,25 +39,31 @@ public final class ArtemisRoutineMemory {
     }
 
     public static final class Step {
+        public final String phase;
         public final TransportState state;
         public final String action;
 
-        public Step(TransportState state,String action){
-            this.state=state;this.action=action==null?"":action;
+        public Step(String phase,TransportState state,String action){
+            this.phase=safe(phase);
+            this.state=state==null?TransportState.UNKNOWN:state;
+            this.action=action==null?"":action;
         }
 
         JSONObject toJson(){
             JSONObject o=new JSONObject();
-            try{o.put("state",state.name()).put("action",action);}catch(Exception ignored){}
+            try{o.put("phase",phase).put("state",state.name()).put("action",action);}
+            catch(Exception ignored){}
             return o;
         }
 
         static Step fromJson(JSONObject o){
+            if(o==null)return new Step("",TransportState.UNKNOWN,"");
             try{
-                return new Step(TransportState.valueOf(o.optString("state","UNKNOWN")),
+                return new Step(o.optString("phase",""),
+                        TransportState.valueOf(o.optString("state","UNKNOWN")),
                         o.optString("action",""));
             }catch(Exception e){
-                return new Step(TransportState.UNKNOWN,"");
+                return new Step("",TransportState.UNKNOWN,"");
             }
         }
     }
@@ -61,7 +74,9 @@ public final class ArtemisRoutineMemory {
         public final long learnedAt;
 
         Routine(String key,List<Step> steps,long learnedAt){
-            this.key=key;this.steps=Collections.unmodifiableList(steps);this.learnedAt=learnedAt;
+            this.key=key;
+            this.steps=Collections.unmodifiableList(steps);
+            this.learnedAt=learnedAt;
         }
     }
 
@@ -75,7 +90,7 @@ public final class ArtemisRoutineMemory {
             List<Step> out=new ArrayList<>();
             for(int i=0;i<a.length()&&i<MAX_STEPS;i++){
                 Step s=Step.fromJson(a.optJSONObject(i));
-                if(s.action.isEmpty())return null;
+                if(s.phase.isEmpty()||s.action.isEmpty())return null;
                 out.add(s);
             }
             return out.isEmpty()?null:new Routine(key,out,root.optLong("learnedAt",0L));
@@ -91,7 +106,7 @@ public final class ArtemisRoutineMemory {
         for(int i=0;i<n;i++)a.put(steps.get(i).toJson());
         JSONObject root=new JSONObject();
         try{
-            root.put("schema",1)
+            root.put("schema",2)
                     .put("learnedAt",System.currentTimeMillis())
                     .put("steps",a);
             prefs.edit().putString("routine:"+safe(key),root.toString()).apply();
