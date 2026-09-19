@@ -53,6 +53,8 @@ Each profile has a deterministic title: `ALEYON — <target language>`.
 
 Start performs: observe → normalize → resolve canonical conversation → reuse or reconstruct → inject bounded local continuity → verify requested Chat/Live state.
 
+Routing is deliberately asymmetric: an existing profile with no local canonical-conversation record is treated as a migration and **rebuilds directly without search**. Conversation search is used only when `ConversationRegistry` says that Aleyon previously verified that canonical chat and it is no longer immediately visible. Search is a separate `CONVERSATION_SEARCH` state; an arbitrary editable field can never be promoted to the normal chat composer. A bounded replan budget plus a start watchdog aborts safely instead of leaving `Preparando…` frozen indefinitely.
+
 If the canonical conversation is deleted, reconstruction uses local learner truth. The provider chat is a cognitive cache, not memory ownership.
 
 ## Observe → act → verify → recover
