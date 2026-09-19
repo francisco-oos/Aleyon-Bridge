@@ -48,9 +48,6 @@ public final class AleyonAccessibilityService extends AccessibilityService
     private static final int MAX_UI_RETRIES=8;
     private static final int MAX_LIVE_EXPLORE_STALLS=6;
     private static final int MAX_LIVE_EXPLORE_MOVES=16;
-    // Bump whenever semantic action policy changes so stale learned routes from
-    // an older Bridge build are not replayed against a new perception policy.
-    private static final int ARTEMIS_POLICY_VERSION=3;
     private static final long MAX_START_RUNTIME_MS=180_000L;
     private static final long MAX_CLOSE_RUNTIME_MS=360_000L;
     private static final long DEBRIEF_IDLE_TIMEOUT_MS=180_000L;
@@ -270,8 +267,8 @@ public final class AleyonAccessibilityService extends AccessibilityService
     }
     private static String sourceFor(AccessibilityNodeInfo node,String base){return GEMINI_HOST_PACKAGE.equals(packageName(node))?base+":google-host":base+":gemini-app";}
     private String artemisRoutineKey(String capability){
-        return "policy-"+ARTEMIS_POLICY_VERSION+"|"+capability+"|"
-                +packageVersion(GEMINI_PACKAGE)+"|"+packageVersion(GEMINI_HOST_PACKAGE);
+        return capability+"|"+packageVersion(GEMINI_PACKAGE)+"|"
+                +packageVersion(GEMINI_HOST_PACKAGE);
     }
     private long packageVersion(String pkg){
         try{
