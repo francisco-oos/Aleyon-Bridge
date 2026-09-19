@@ -6,8 +6,17 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION = (ROOT/'VERSION').read_text(encoding='utf-8').strip()
 OUT = ROOT.parent / f'Aleyon-Bridge-{VERSION}-source.zip'
 
-EXCLUDED_DIRS = {'.git','.test-out','.full-java-stub-test','.build-cache','build'}
-EXCLUDED_NAMES = {'local.properties'}
+EXCLUDED_DIRS = {'.git','.gradle','.idea','.kotlin','.cxx','.externalNativeBuild','gradle','.test-out','.full-java-stub-test','.build-cache','build'}
+EXCLUDED_NAMES = {'local.properties','gradlew','gradlew.bat'}
+
+def canonical_bytes(path):
+    """Write stable LF text to the integrity manifest/package on every OS."""
+    raw=path.read_bytes()
+    try:
+        text=raw.decode('utf-8')
+    except UnicodeDecodeError:
+        return raw
+    return text.replace('\r\n','\n').replace('\r','\n').encode('utf-8')
 
 def controlled_files(include_manifest=False):
     rows=[]
@@ -16,7 +25,7 @@ def controlled_files(include_manifest=False):
         rel=p.relative_to(ROOT)
         if any(part in EXCLUDED_DIRS for part in rel.parts): continue
         if p.name in EXCLUDED_NAMES: continue
-        if p.suffix.lower()=='.apk': continue
+        if p.suffix.lower() in {'.apk','.iml'}: continue
         if p.name.startswith('Aleyon-Bridge-') and p.suffix.lower()=='.zip': continue
         if not include_manifest and rel.as_posix()=='MANIFEST_SHA256.txt': continue
         rows.append((rel.as_posix(),p))
@@ -34,7 +43,7 @@ for rel in ['local.properties']:
 # Regenerate manifest from the complete controlled tree, not from a hand-maintained list.
 manifest_lines=[]
 for rel,p in controlled_files(False):
-    manifest_lines.append(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {rel}')
+    manifest_lines.append(f'{hashlib.sha256(canonical_bytes(p)).hexdigest()}  {rel}')
 (ROOT/'MANIFEST_SHA256.txt').write_text('\n'.join(manifest_lines)+'\n',encoding='utf-8')
 
 # Preflight + QA must pass before packaging.
@@ -56,6 +65,6 @@ if r.returncode: raise SystemExit(r.returncode)
 if OUT.exists(): OUT.unlink()
 with zipfile.ZipFile(OUT,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
     for rel,p in controlled_files(True):
-        z.write(p,rel)
+        z.writestr(rel,canonical_bytes(p))
 print(OUT)
 print('sha256='+hashlib.sha256(OUT.read_bytes()).hexdigest())
