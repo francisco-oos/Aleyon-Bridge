@@ -1,12 +1,12 @@
 {
   "product": "Aleyon Bridge",
-  "version": "0.5.0-alpha2",
-  "version_code": 24,
+  "version": "0.5.0-alpha3",
+  "version_code": 25,
   "development_source_of_truth_branch": "develop/artemis-transport",
-  "runtime_basis": "Artemis-inspired observe-act-verify-recover transport over selected field-tested Gemini capabilities",
-  "learning_basis": "Aleyon local continuity capsule + evidence ledger + canonical conversation reconstruction",
+  "runtime_basis": "Two Artemis task loops: fresh-chat start and close-summary over selected field-tested Gemini capabilities",
+  "learning_basis": "Aleyon local continuity capsule + evidence ledger + disposable Gemini provider sessions",
   "memory_owner": "Aleyon local",
   "session_engine": "official Gemini Android app",
-  "provider_history_role": "useful cognitive cache, never authoritative memory",
+  "provider_history_role": "disposable convenience history; never required for continuity",
   "promotion_gate": "CI compile + exhaustive static/simulation QA + physical multi-device QA including Nubia"
 }
