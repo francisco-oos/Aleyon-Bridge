@@ -46,6 +46,11 @@ check('learning.commitVerified' in service,'Local commit verification missing')
 check('NotificationHelper.postSessionClosed' in service,'Close notification missing')
 check('journal.appendCloseSummary' in service,'Close summary history persistence missing')
 check('SessionTextDelta.delta' in service,'Session evidence delta missing')
+check('debriefConversationAnchor=sessionEvidenceText' in service
+      and service.count('SessionTextDelta.containsConversationEvidence')>=3,
+      'Close can consume a debrief from a different Gemini chat')
+check('showLatestSummary(id)' in html and 'AndroidBridge.acknowledgePendingSummary()' in html,
+      'Notification does not open the detailed latest close')
 for token in ['Notebook','notebook','Cuaderno','cuaderno','showCurtain','hideCurtain']:
     check(token not in service, f'Forbidden legacy runtime token in service: {token}')
 check('CompatibilityMemory' in service,'Compatibility diagnostics missing')

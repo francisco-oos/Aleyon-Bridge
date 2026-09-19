@@ -4,7 +4,7 @@ public final class CoreTests {
     private static int passed=0;
     public static void main(String[] args){
         testNaming();testTransportState();testDebriefParser();testDebriefMarkdown();testDebriefRejectIncomplete();testDebriefStreaming();
-        testTextDelta();testSchemaV5();testScreenBounds();testLedger();testDiagnostics();
+        testTextDelta();testConversationEvidenceGuard();testSchemaV5();testScreenBounds();testLedger();testDiagnostics();
         testMaterialPolicy();testProfileMatrix();testAdversarialInputs();
         System.out.println("PASS core tests: "+passed);
     }
@@ -52,6 +52,18 @@ public final class CoreTests {
     private static void testTextDelta(){
         String d=SessionTextDelta.delta("A\nB\n","A\nB\nC\nD\n");
         ok(d.contains("C"));ok(d.contains("D"));ok(!d.contains("A\n"));passed++;
+    }
+    private static void testConversationEvidenceGuard(){
+        String evidence="Think of a server as a very powerful computer that's always running.\n"
+                +"Can you tell me about a challenging Python project you've completed?";
+        String same="Contexto\n"+evidence+"\nHaz un cierre breve y útil de esta práctica de Inglés.";
+        String other="Haz un cierre breve y útil de esta práctica de Inglés.\n"
+                +"Resumen: Practicaste la formulación inicial de preguntas en inglés.\n"
+                +"Avance: Tomaste la iniciativa de empezar la conversación.";
+        ok(SessionTextDelta.containsConversationEvidence(evidence,same));
+        ok(!SessionTextDelta.containsConversationEvidence(evidence,other));
+        ok(!SessionTextDelta.containsConversationEvidence("Haz un cierre breve y útil",other,2));
+        passed++;
     }
     private static void testSchemaV5(){eq(6,ProtocolContract.SCHEMA_VERSION);passed++;}
     private static void testScreenBounds(){

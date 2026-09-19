@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0-alpha6 — cierre ligado a la sesión / notificación detallada
+
+- Corrige el fallo físico donde, mientras Gemini tardaba en responder, cambiar a un chat anterior permitía que Aleyon interpretara un cierre viejo como el de la sesión actual.
+- CLOSE_SESSION conserva una huella efímera basada en evidencia real de la práctica actual y exige continuidad de esa evidencia antes de enviar o aceptar el debrief.
+- Si el usuario cambia de conversación, Aleyon pausa el cierre con “Vuelve al chat de esta sesión…” y no parsea ni hace commit del otro chat.
+- No se reintroducen títulos, búsqueda, renombrado ni recuperación de conversaciones del proveedor.
+- Al regresar al chat correcto, continúa la espera sensible a progreso de alpha5.
+- Al abrir la notificación, Aleyon muestra directamente el cierre completo más reciente y permite consultar sesiones anteriores.
+- Añade regresiones para el caso exacto de dos chats con el mismo prompt de cierre.
+
+
 ## 0.5.0-alpha5 — Artemis explora el viewport / cierre tolerante a red lenta
 
 - Añade exploración semántica aprendible a START_SESSION cuando el launcher Live queda fuera del viewport porque Gemini ya estaba abierto o desplazado.

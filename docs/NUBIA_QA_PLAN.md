@@ -214,3 +214,12 @@ Do not promote alpha3 to the stable baseline until:
 - Durante Esperando resumen, simular conexión lenta: no reenviar el prompt, mantener el mismo SESSION_ID local y aceptar una respuesta tardía si sigue habiendo progreso.
 - Verificar el aviso Gemini tarda; sigo esperando… y que el fallback sólo ocurra tras un periodo prolongado sin progreso.
 - Repetir en Nubia y Samsung antes de promoción.
+
+
+## 0.5.0-alpha6 — cambio de chat durante WAIT_DEBRIEF (2026-09-18)
+
+- Iniciar Live, cerrarlo y esperar a que Aleyon envíe el debrief.
+- Mientras Gemini aún no responde, cambiar manualmente a un chat anterior que ya tenga `Resumen/Avance/A reforzar/Próximo paso`.
+- Aleyon debe mostrar **Vuelve al chat de esta sesión…** y NO guardar el cierre del chat anterior.
+- Volver al chat actual: Aleyon debe reanudar la espera y aceptar sólo el cierre de esa sesión.
+- Tocar la notificación: Aleyon debe abrir directamente el cierre completo más reciente, con acceso al historial.

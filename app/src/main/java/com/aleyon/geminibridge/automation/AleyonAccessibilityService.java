@@ -174,7 +174,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         }
         handler.postDelayed(()->{
             JSONObject report=new JSONObject();
-            try{report.put("schema","aleyon-gemini-passive-probe-v9").put("version","0.5.0-alpha5")
+            try{report.put("schema","aleyon-gemini-passive-probe-v9").put("version","0.5.0-alpha6")
                     .put("probeId",probeId).put("readOnly",true).put("sampleCount",samples.length()).put("samples",samples);}catch(Exception ignored){}
             getSharedPreferences("aleyon_probe",MODE_PRIVATE).edit().putString("last_probe",report.toString())
                     .putLong("last_probe_ts",System.currentTimeMillis()).putString("last_probe_id",probeId).apply();
@@ -315,9 +315,9 @@ public final class AleyonAccessibilityService extends AccessibilityService
         private boolean debriefInitialized,debriefWriteIssued,debriefWriteVerified,debriefSubmitPending;
         private int debriefSubmitAttempts,debriefMissingPasses;
         private String debriefPayload="",debriefResponseBaselineText="",debriefLastObservedText="";
-        private String stableTranscriptSnapshot="";
+        private String stableTranscriptSnapshot="",debriefConversationAnchor="";
         private int stableTranscriptObservations;
-        private boolean debriefSlowNoticeShown;
+        private boolean debriefSlowNoticeShown,conversationDriftNotified;
         private final long runnerStartedAtMs=System.currentTimeMillis();
         private long closeStartedAtMs,debriefWaitStartedAtMs,debriefLastProgressAtMs;
         private String sessionEvidenceText="", debriefBaselineText="", contextBaselineText="";
@@ -674,15 +674,30 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     }
                     sessionEvidenceText=SessionTextDelta.delta(journal.baselineText(profile.id),current);
                     if(sessionEvidenceText.trim().length()<20){finishReady();return;}
+                    debriefConversationAnchor=sessionEvidenceText;
+                    conversationDriftNotified=false;
                     if(overlay!=null)overlay.showWorking(profile.label,"Pidiendo resumen a Gemini…");
                     moveClose(ClosePhase.DELIVER_DEBRIEF);
                 }
                 case DELIVER_DEBRIEF -> {
                     AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
+                    String visibleNow=transport.collectConversationText(r);
+                    if(o.state!=TransportState.NORMAL_CHAT
+                            ||!SessionTextDelta.containsConversationEvidence(debriefConversationAnchor,visibleNow)){
+                        if(!conversationDriftNotified&&overlay!=null){
+                            conversationDriftNotified=true;
+                            overlay.showWorking(profile.label,"Vuelve al chat de esta sesión…");
+                        }
+                        schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
+                    }
+                    if(conversationDriftNotified){
+                        conversationDriftNotified=false;
+                        if(overlay!=null)overlay.showWorking(profile.label,"Pidiendo resumen a Gemini…");
+                    }
                     if(!debriefInitialized){
-                        if(o.state!=TransportState.NORMAL_CHAT||!o.composerReady){schedule(OBSERVE_FALLBACK_MS);return;}
+                        if(!o.composerReady){schedule(OBSERVE_FALLBACK_MS);return;}
                         transition(profile,SessionStage.ANALYZING);
-                        debriefBaselineText=transport.collectConversationText(r);
+                        debriefBaselineText=visibleNow;
                         debriefPayload=prompts.sessionDebrief(profile);
                         debriefInitialized=true;
                     }
@@ -741,6 +756,20 @@ public final class AleyonAccessibilityService extends AccessibilityService
                     AccessibilityNodeInfo r=root();TransportObservation o=GeminiStateObserver.observe(r);
                     if(o.state!=TransportState.NORMAL_CHAT){schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;}
                     String all=transport.collectConversationText(r);long nowMs=System.currentTimeMillis();
+                    boolean sameSession=SessionTextDelta.containsConversationEvidence(debriefConversationAnchor,all)
+                            ||SessionTextDelta.containsConversationEvidence(debriefResponseBaselineText,all,2);
+                    if(!sameSession){
+                        if(!conversationDriftNotified&&overlay!=null){
+                            conversationDriftNotified=true;
+                            overlay.showWorking(profile.label,"Vuelve al chat de esta sesión…");
+                        }
+                        debriefLastProgressAtMs=nowMs;
+                        schedule(RESPONSE_OBSERVE_FALLBACK_MS);return;
+                    }
+                    if(conversationDriftNotified){
+                        conversationDriftNotified=false;
+                        if(overlay!=null)overlay.showWorking(profile.label,"Esperando resumen de Gemini…");
+                    }
                     long waited=debriefWaitStartedAtMs<=0L?0L:nowMs-debriefWaitStartedAtMs;
                     if(!all.equals(debriefLastObservedText)){
                         debriefLastObservedText=all;debriefLastProgressAtMs=nowMs;

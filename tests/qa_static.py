@@ -107,6 +107,9 @@ check('launchGemini();moveClose(ClosePhase.END_LIVE);' not in close_flow,'Close 
 check('if(transport.isGeminiSurface(r))' in close_flow and 'if(!closeLaunchIssued){closeLaunchIssued=true;launchGemini();}' in close_flow,'Close flow does not preserve current Gemini surface before relaunching')
 check('if("CHAT".equals(sessionMode) && o.state==TransportState.NORMAL_CHAT)' not in close_flow and 'if(o.state==TransportState.NORMAL_CHAT)' in close_flow,'Close still trusts stale mode instead of observed Live/Chat state')
 check('DEBRIEF_IDLE_TIMEOUT_MS=180_000L' in service and 'debriefLastProgressAtMs' in close_flow and 'commitTranscriptFallback' in close_flow and 'DEBRIEF_TIMEOUT' in close_flow,'Missing progress-sensitive debrief fallback')
+check('debriefConversationAnchor=sessionEvidenceText' in close_flow,'Close is not bound to current-session evidence')
+check(close_flow.count('SessionTextDelta.containsConversationEvidence')>=3,'Cross-chat contamination guards are incomplete')
+check('Vuelve al chat de esta sesión' in close_flow,'Conversation drift does not surface a safe user action')
 check('DEBRIEF_RESPONSE_TIMEOUT_MS' not in service,'Old fixed 45-second debrief timeout returned')
 check('if(r.isClosing())return;' in service and 'if(mode==Mode.CLOSE)return;' in service,'Repeated close can restart an in-flight close')
 check(close_flow.index('artemisCloseAgent.complete()') < close_flow.index('moveClose(ClosePhase.WAIT_DEBRIEF)'),'Artemis close routine is not saved before waiting for Gemini cognition')
@@ -138,8 +141,9 @@ check('android.permission.RECORD_AUDIO' not in manifest,'Bridge must not request
 check('android.permission.INTERNET' not in manifest,'Bridge unexpectedly requests INTERNET')
 check('SYSTEM_ALERT_WINDOW' not in manifest,'Broad overlay permission introduced')
 check('POST_NOTIFICATIONS' in manifest and 'NotificationHelper.postSessionClosed' in service,'Session close notification regression')
-check('versionCode 27' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
-check(version=='0.5.0-alpha5','VERSION file mismatch')
+check('showLatestSummary(id)' in read('app/src/main/assets/index.html'),'Notification resume does not open the latest detailed summary')
+check('versionCode 28' in gradle and f'versionName "{version}"' in gradle,'Android version does not match VERSION')
+check(version=='0.5.0-alpha6','VERSION file mismatch')
 
 # No obsolete prompt pipeline or upgrade-only command aliases
 prompt_dir=ROOT/'app/src/main/assets/prompts'

@@ -79,7 +79,7 @@ public final class NotificationHelper {
             nm.notify(profileId.hashCode(), builder.build());
 
             // Let MainActivity know a summary is waiting so it can open the
-            // history view automatically on next resume, whether the user
+            // latest full close directly on next resume, whether the user
             // gets there by tapping this notification or just reopening the
             // app (2026-09-06, user report: tapping the notification itself
             // just opened Aleyon with nothing readable, with no way back to
