@@ -4,9 +4,10 @@ import com.aleyon.geminibridge.automation.ProfileSpec;
 import java.util.List;
 
 /**
- * Builds a bounded high-signal continuation capsule.
- * Full history stays in Aleyon's local vault; Gemini receives only the active
- * learner state needed to continue naturally without replaying whole sessions.
+ * Builds the bounded high-signal state passed to a fresh Gemini session.
+ *
+ * Full history stays in Aleyon's local store. Gemini receives only the learner
+ * state needed for this session; provider chat history is never continuity.
  */
 public final class ContextCapsuleBuilder {
     private static final int MAX_SUMMARY=760;
@@ -21,15 +22,11 @@ public final class ContextCapsuleBuilder {
     private ContextCapsuleBuilder() {}
 
     public static String build(ProfileSpec p, LearningLedger ledger, String sessionId, boolean liveMode) {
-        return build(p,ledger,sessionId,liveMode,false);
-    }
-
-    public static String build(ProfileSpec p, LearningLedger ledger, String sessionId, boolean liveMode, boolean reconstructConversation) {
         StringBuilder b=new StringBuilder(3000);
-        b.append(reconstructConversation?"Reconstrucción de continuidad de Aleyon.\n":"Actualización de continuidad de Aleyon.\n")
-         .append("Toma este bloque como el estado pedagógico local actual del alumno. Aleyon conserva la memoria y el progreso. ")
-         .append("El historial de este chat puede aportar contexto, pero si difiere de este bloque, este estado local prevalece.\n")
-         .append(reconstructConversation?"Este chat fue recreado o no pudo verificarse; reconstruye la continuidad sólo con la información de este bloque y no inventes recuerdos anteriores.\n\n":"Continúa de forma natural desde el historial útil del chat sin repetir presentaciones innecesarias.\n\n")
+        b.append("Contexto actual de continuidad de Aleyon.\n")
+         .append("Toma este bloque como el estado pedagógico actual del alumno. ")
+         .append("Aleyon conserva la memoria y el progreso; este chat de Gemini es sólo la sesión cognitiva actual. ")
+         .append("No inventes recuerdos ni dependas de conversaciones anteriores del proveedor.\n\n")
          .append("Idioma objetivo: ").append(p.targetLanguage).append('\n')
          .append("Idioma de apoyo: ").append(blank(p.nativeLanguage,"según necesidad")).append('\n')
          .append("Nivel: ").append(blank(p.level,"por estimar progresivamente")).append('\n')
@@ -63,7 +60,7 @@ public final class ContextCapsuleBuilder {
          .append("- En Live usa turnos breves, deja hablar al alumno y evita convertir la práctica en un cuestionario.\n")
          .append("- Corrige según la preferencia indicada y evita interrupciones innecesarias.\n")
          .append("- Imágenes, cámara y pantalla pueden usarse libremente como apoyo de la conversación.\n")
-         .append("- Cuando recibas este contexto, responde con una confirmación breve y natural y queda listo para comenzar la conversación.");
+         .append("- Responde a este contexto con una confirmación breve y natural y queda listo para comenzar.");
         return b.toString();
     }
 
