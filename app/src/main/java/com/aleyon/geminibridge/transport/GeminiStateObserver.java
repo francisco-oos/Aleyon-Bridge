@@ -18,10 +18,12 @@ public final class GeminiStateObserver {
         if(root==null) return new TransportObservation(TransportState.UNAVAILABLE,false,false,false,"root-unavailable");
         if(GeminiUi.isBlockingConsentDialog(root))
             return new TransportObservation(TransportState.CONSENT_REQUIRED,false,false,false,"human-consent");
+        boolean canonical=canonicalTitle!=null&&!canonicalTitle.trim().isEmpty()
+                && GeminiUi.hasConversationTitle(root,canonicalTitle);
+        if(GeminiUi.isConversationSearchOpen(root))
+            return new TransportObservation(TransportState.CONVERSATION_SEARCH,false,false,canonical,"conversation-search");
         if(GeminiUi.isLiveScreen(root))
             return new TransportObservation(TransportState.LIVE_ACTIVE,false,false,false,"live-active");
-        boolean canonical=canonicalTitle!=null&&!canonicalTitle.trim().isEmpty()
-                && GeminiUi.hasExact(root,canonicalTitle);
         if(GeminiUi.isNavigationDrawerOpen(root))
             return new TransportObservation(TransportState.CONVERSATION_LIST,false,false,canonical,"conversation-list");
         if(GeminiUi.isTemporaryChat(root))
