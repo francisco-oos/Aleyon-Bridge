@@ -9,10 +9,7 @@ mkdir "%OUT%"
 javac -d "%OUT%" ^
  app\src\main\java\com\aleyon\geminibridge\core\SessionStage.java ^
  app\src\main\java\com\aleyon\geminibridge\core\ProtocolContract.java ^
- app\src\main\java\com\aleyon\geminibridge\core\RecoveryPlanner.java ^
  app\src\main\java\com\aleyon\geminibridge\core\ProfileNaming.java ^
- app\src\main\java\com\aleyon\geminibridge\core\CanonicalConversationPolicy.java ^
- app\src\main\java\com\aleyon\geminibridge\core\CanonicalChatRoutingPolicy.java ^
  app\src\main\java\com\aleyon\geminibridge\core\TransportState.java ^
  app\src\main\java\com\aleyon\geminibridge\core\ScreenBoundsPolicy.java ^
  app\src\main\java\com\aleyon\geminibridge\core\LearningEvent.java ^
