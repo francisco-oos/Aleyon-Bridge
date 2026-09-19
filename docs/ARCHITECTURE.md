@@ -1,112 +1,114 @@
-# Architecture — Aleyon Bridge 0.5.0-alpha2
+# Architecture — Aleyon Bridge 0.5.0-alpha3
 
 ## Product definition
 
-Aleyon Bridge is the local continuity layer that uses the official Gemini Android app as the cognitive, voice and multimodal session engine. The daily UX remains deliberately small: choose a language/profile, then choose **Chat** or **Live**.
+Aleyon Bridge is the local continuity layer that uses the official Gemini Android app as the cognitive, voice and multimodal session engine. The daily UX is intentionally small: choose a profile, then choose **Chat** or **Live**.
 
 ## Ownership boundary
 
-Aleyon Bridge owns learner identity, profile/preferences, learning memory/evidence, progress/next objective, canonical-conversation registry, reconstruction state, transport compatibility memory and recovery journal.
+Bridge owns learner profile/preferences, verified learning evidence, last session summary, progress/next objective, local session transaction state and transport compatibility diagnostics.
 
-Gemini provides reasoning, conversational responses, Live voice, native file analysis and optional useful provider-side history. Provider history is never authoritative.
+Gemini owns only the current provider interaction: reasoning, text conversation, Live voice, camera/screen and native file analysis.
 
-## Control plane vs data plane
+**Provider history is disposable and is not part of the continuity model.**
 
-The embedded Artemis transport is the **control plane**. Bridge vendors a narrow Android-safe subset adapted from Google Artemis (Apache-2.0): multi-window root recovery from the Artemis accessibility helper plus a Flash-style reactive action loop with bounded routine memory. Bridge gives this runtime an intent; Artemis observes the current Gemini surface, chooses one allow-listed action, executes it, observes again and either replays or relearns the route.
+## Session invariant
 
-Android/Gemini is the **data plane** for media:
+Every explicit Bridge start uses a **fresh normal Gemini chat**.
 
-- Live microphone/camera/screen are owned by Gemini;
-- selected document/image/audio/video bytes are handed through Android/Gemini native mechanisms;
-- Bridge does not request microphone/camera/storage permissions and does not copy file bytes into the learner ledger.
-
-This is why disabling microphone authority from Artemis/Bridge does not prevent Gemini Live or Gemini file analysis.
+Bridge does not search old Gemini chats, assign deterministic titles, rename them, reconstruct them, or ask the user to recover them. The local continuity capsule is enough to start again after provider history is deleted or Android kills an unfinished run.
 
 ## Layering
 
 ```text
 UI: profile → Chat / Live
         ↓
-SessionIntent (+ optional material metadata)
-        ↓
-Learning continuity
+local learner continuity
   ContextCapsuleBuilder
   LearningLedger
         ↓
-Embedded Artemis transport
+AleyonAccessibilityService
+        ↓
+embedded Artemis task runtime
   ArtemisRootResolver
   ArtemisFlashAgent
   ArtemisRoutineMemory
   GeminiStateObserver
-  ConversationRegistry
-  CompatibilityMemory
-  GeminiConversationTransport
         ↓
-Narrow provider adapter
+narrow Gemini transport
+  GeminiConversationTransport
   GeminiUi
         ↓
-Official Gemini Android app
+official Gemini Android app
 ```
 
-`GeminiUi` is the provider-specific capability adapter. `AleyonAccessibilityService` does not encode a navigation script: it delegates canonical-chat navigation to `ArtemisFlashAgent`, which re-observes after every action. `ArtemisRoutineMemory` caches successful semantic state/action sequences by Gemini/Google package-version signature. A matching routine is replayed; any state or action mismatch invalidates it and the Flash agent falls back to semantic exploration, learns the new successful sequence and stores it.
+## Artemis task model
 
-## Canonical conversation lifecycle
+The runtime has only two product tasks.
 
-Each profile has a deterministic title: `ALEYON — <target language>`.
+### START_SESSION
 
-Start performs: observe → normalize → resolve canonical conversation → reuse or reconstruct → inject bounded local continuity → verify requested Chat/Live state.
+Phases: `fresh-chat` → `context` → `live`.
 
-Routing is deliberately asymmetric: an existing profile with no local canonical-conversation record is treated as a migration and **rebuilds directly without search**. Conversation search is used only when `ConversationRegistry` says that Aleyon previously verified that canonical chat and it is no longer immediately visible. Search is a separate `CONVERSATION_SEARCH` state; an arbitrary editable field can never be promoted to the normal chat composer. A bounded replan budget plus a start watchdog aborts safely instead of leaving `Preparando…` frozen indefinitely.
+The task observes the current Gemini surface, gets to a blank normal chat, delivers the local continuity capsule and either leaves Chat ready or verifies Gemini Live.
 
-If the canonical conversation is deleted, reconstruction uses local learner truth. The provider chat is a cognitive cache, not memory ownership.
+### CLOSE_SESSION
 
-## Embedded Artemis execution scope
+Phases: `end-live` → `debrief`.
 
-The embedded Artemis runtime owns the complete start transport, not only canonical-chat navigation. It keeps independent learned routines for:
+After Live ends, Bridge waits for observable transcript stability, requests a short human-readable debrief in the same chat and commits only a verified parsed result.
 
-- `canonical-nav`: reach/recover the correct Gemini conversation;
-- `context-delivery`: write the continuity capsule, submit it and verify the postcondition;
-- `live-start`: activate Live and verify `LIVE_ACTIVE`.
+`ArtemisRoutineMemory` stores `phase + semantic state + action`, never learner content. Phase-aware memory avoids confusing two identical `NORMAL_CHAT` observations that occur at different moments of the task.
 
-A context submit is successful only when a fresh observation proves that the prepared payload left the composer and the conversation advanced. If the user submits manually during recovery, Bridge accepts the observed postcondition but does not falsely record that manual action as an automated success. Three unverified submit attempts invalidate/fail the route quickly instead of consuming the generic UI retry budget.
+## Observe → act → verify
 
-Routine learning is intentionally narrower than full upstream Artemis Flash/Explorer. The APK stores and replays verified semantic state/action sequences and invalidates them on mismatch. Full novel-UI reasoning in upstream Artemis uses a host-side model/runtime; it is not silently claimed to exist inside the offline-safe Bridge APK.
+For every provider interaction:
 
-## Observe → act → verify → recover
+1. observe the current semantic state;
+2. choose one allow-listed action;
+3. execute it;
+4. observe again;
+5. advance only after the expected postcondition;
+6. invalidate/relearn a mismatched routine;
+7. fail closed when the surface cannot be verified.
 
-- **observe**: classify current Gemini state (`TransportState`);
-- **act**: invoke one allow-listed semantic action;
-- **verify**: require the expected postcondition before advancing;
-- **recover**: normalize known unexpected states;
-- **fail closed**: unknown variants preserve local state and record evidence instead of guessing.
+Timing is used only for event debounce, backoff or polling of an external condition. No product action is executed merely because a fixed delay expired.
 
-## Material handoff
+## Fresh-chat proof
 
-`SessionMaterial` is metadata-only. `MaterialHandoffPolicy` accepts only `content://` references chosen by the user, limits batches to 10 and enforces conservative size ceilings. The current production transport may open Gemini's native attachment surface but intentionally does not control the Android document picker.
+`GeminiUi.isBlankNormalChat()` requires a verified normal composer and no visible user/assistant message containers. This is the postcondition after **Nuevo chat**.
 
-The actual study flow is:
+A provider title is irrelevant to Bridge.
 
-```text
-profile/context → canonical Gemini chat → native attachment UI → user selects item → Gemini analyzes → session close → local learning evidence
-```
+## Continuity capsule
 
-Untrusted document content is never allowed to become an Artemis shell/tool argument because Bridge has no general command surface.
+A new chat receives a bounded local capsule with profile, correction/conversation preferences, last verified summary, next objective and recent verified evidence. Full history remains local.
 
-## Compatibility immune memory
-
-`CompatibilityMemory` contains route/failure evidence only, never learner transcript or pedagogy. `ArtemisRoutineMemory` separately stores successful navigation routines only; it contains no learner content. When Gemini changes, a mismatched routine is discarded and the embedded Flash loop relearns from current semantic observations. A completely opaque/unknown surface still fails closed; host-side full Artemis remains the escalation path for variants that no longer expose enough accessibility semantics.
+Deleting Gemini chats has no effect on Bridge continuity.
 
 ## Session close
 
-1. end Live or finish Chat;
-2. wait for text to settle;
-3. capture current-session visible delta;
-4. request a short debrief;
-5. parse only the new debrief;
-6. persist summary + next objective + progress evidence + reinforcement evidence;
-7. read back the local commit;
+1. end Live if active;
+2. return to the same normal chat;
+3. observe transcript until it is stable;
+4. compute current-session delta;
+5. ask Gemini for four short lines: `Resumen`, `Avance`, `A reforzar`, `Próximo paso`;
+6. parse only the new debrief;
+7. commit verified summary/evidence/next objective locally;
 8. notify the user.
+
+## Material handoff
+
+`SessionMaterial` is metadata-only. `MaterialHandoffPolicy` accepts user-selected `content://` references and conservative size/item limits. The transport may open Gemini's attachment surface but does not drive Android's document picker.
+
+## Failure behavior
+
+There is no recovery product mode.
+
+If startup fails, the current attempt is marked with diagnostic evidence. The next explicit start discards unfinished provider transaction state and creates another fresh chat from local memory.
+
+Legacy persisted `RECOVERING` values are migration data only and are normalized to idle state without exposing a recovery action.
 
 ## Security boundary
 
-The APK has no arbitrary shell, unrestricted ADB, public daemon, arbitrary package control, coordinate gesture injection, automatic consent acceptance or remote WebView navigation. Accessibility is package-allow-listed to Gemini. Android backup is disabled for the local learner store.
+The APK has no unrestricted shell/ADB, general package control, coordinate gesture injection, automatic consent acceptance or remote WebView navigation. Accessibility is allow-listed to Gemini. Local learner memory remains the authoritative state.
