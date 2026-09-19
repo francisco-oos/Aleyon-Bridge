@@ -18,6 +18,7 @@ public final class GeminiConversationTransport {
     public boolean openConversationSearch(AccessibilityNodeInfo root){return GeminiUi.clickConversationSearch(root);}
     public boolean searchConversation(AccessibilityNodeInfo root,String title){return GeminiUi.setConversationSearchQuery(root,title);}
     public boolean createNormalConversation(AccessibilityNodeInfo root){return GeminiUi.clickNormalNewChat(root);}
+    public boolean isBlankConversation(AccessibilityNodeInfo root){return GeminiUi.isBlankNormalChat(root);}
     public boolean writeContext(AccessibilityNodeInfo root,String payload){return GeminiUi.writeComposer(root,payload);}
     public boolean isContextPrepared(AccessibilityNodeInfo root,String payload){return GeminiUi.composerContainsExactText(root,payload);}
     public boolean submitPreparedContext(AccessibilityNodeInfo root){return GeminiUi.clickSendAction(root);}
