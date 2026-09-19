@@ -24,6 +24,7 @@ public final class ContextCapsuleBuilder {
 
         StringBuilder b=new StringBuilder(3000);
         b.append("Contexto de aprendizaje de Aleyon. Intégralo en silencio: no lo confirmes, no lo resumas y no lo cites.\n")
+         .append("Aleyon conserva la memoria y el progreso local. No inventes recuerdos ni atribuyas progreso sin evidencia.\n")
          .append("Perfil: ")
          .append(clip(blank(p.targetLanguage,"idioma objetivo"),60))
          .append(" | apoyo: ").append(clip(blank(p.nativeLanguage,"según necesidad"),60))

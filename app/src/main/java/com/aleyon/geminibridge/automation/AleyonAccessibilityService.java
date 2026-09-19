@@ -179,7 +179,7 @@ public final class AleyonAccessibilityService extends AccessibilityService
         }
         handler.postDelayed(()->{
             JSONObject report=new JSONObject();
-            try{report.put("schema","aleyon-gemini-passive-probe-v10").put("version","0.5.0-alpha9")
+            try{report.put("schema","aleyon-gemini-passive-probe-v10").put("version","0.5.0-alpha10")
                     .put("probeId",probeId).put("readOnly",true).put("sampleCount",samples.length()).put("samples",samples);}catch(Exception ignored){}
             getSharedPreferences("aleyon_probe",MODE_PRIVATE).edit().putString("last_probe",report.toString())
                     .putLong("last_probe_ts",System.currentTimeMillis()).putString("last_probe_id",probeId).apply();
