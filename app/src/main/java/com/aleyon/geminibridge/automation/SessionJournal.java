@@ -54,8 +54,12 @@ public final class SessionJournal {
     }
 
     public SessionStage stage(String id){
-        try{return SessionStage.valueOf(prefs.getString("stage:"+id,SessionStage.READY.name()));}
-        catch(Exception e){return SessionStage.ERROR;}
+        try{
+            SessionStage s=SessionStage.valueOf(prefs.getString("stage:"+id,SessionStage.READY.name()));
+            // 0.5.0-alpha3 removed user-visible recovery. Old installs may
+            // still persist RECOVERING; treat it as a clean idle profile.
+            return s==SessionStage.RECOVERING?SessionStage.READY:s;
+        }catch(Exception e){return SessionStage.ERROR;}
     }
 
     public long stageTimestamp(String id){return prefs.getLong("stage_ts:"+id,0L);}
