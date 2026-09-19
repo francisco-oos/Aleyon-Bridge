@@ -29,13 +29,15 @@ On start Bridge performs **observe → normalize → resolve → act → verify*
 
 `CONVERSATION_SEARCH` is explicitly distinct from `NORMAL_CHAT`. Search-query text is never accepted as a conversation result, and `chatComposer()` never falls back to the first arbitrary `EditText`. A start-time watchdog and bounded semantic replans guarantee fail-closed recovery rather than indefinite automation loops.
 
-This branch adopts the useful Artemis principles without importing unrestricted Artemis authority into the APK. The Bridge transport surface is allow-listed: conversation navigation, text delivery, Chat/Live transition, verification and recovery. It does **not** expose arbitrary shell commands, arbitrary package control, installation, public daemon endpoints or unrestricted ADB execution.
+This branch now embeds a narrow derivative of the real Google Artemis implementation instead of only reproducing its ideas. `ArtemisRootResolver` is adapted from the Android accessibility helper's `HierarchyDumper` multi-window/focused-root recovery. `ArtemisFlashAgent` ports the FlashRunner execution shape (one observation → one action → observe again), while `ArtemisRoutineMemory` applies the bounded persistent-memory pattern so a successful semantic route is replayed until it stops matching. On mismatch the routine is invalidated and relearned from current observations.
 
-A host-side Artemis runtime remains useful for QA, unknown-UI exploration and future recovery escalation. Any future integration must preserve the same narrow transport contract.
+The unsafe/general Artemis surfaces are deliberately not ported: `CommandServer`, loopback HTTP/RPC, `GestureController`, coordinate gestures, screenshots, unrestricted ADB/shell, package installation and token receiver are outside the APK. The Bridge transport surface remains allow-listed: conversation navigation, text delivery, Chat/Live transition, verification and recovery.
+
+Full host-side Artemis remains an escalation path for a future Gemini variant that becomes semantically opaque; the embedded subset cannot honestly guarantee autonomous recovery from a UI that exposes no usable accessibility evidence.
 
 ## Compatibility memory
 
-`CompatibilityMemory` stores only validated transport route/evidence and failure counts. It contains no learner content. This is the first local implementation of the "compatibility immune system": known variants use a cheap verified route; unknown variants fail closed with evidence suitable for exploration and later promotion.
+`CompatibilityMemory` stores route/failure evidence. `ArtemisRoutineMemory` stores the successful semantic state/action routine keyed by the installed Gemini/Google version signature. Neither contains learner content. Unchanged UI replays the learned routine; changed UI invalidates and relearns it. Unknown/opaque UI still fails closed with evidence instead of guessing.
 
 ## Reconstruction rule
 
