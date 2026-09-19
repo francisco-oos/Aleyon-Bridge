@@ -11,6 +11,15 @@ errors=[]
 def fail(msg): errors.append(msg)
 def read(rel): return (ROOT/rel).read_text(encoding='utf-8')
 
+def canonical_bytes(path):
+    """Stable content bytes across Git LF and Windows CRLF checkouts."""
+    raw=path.read_bytes()
+    try:
+        text=raw.decode('utf-8')
+    except UnicodeDecodeError:
+        return raw
+    return text.replace('\r\n','\n').replace('\r','\n').encode('utf-8')
+
 version_path=ROOT/'VERSION'
 if not version_path.is_file():
     fail('missing VERSION'); VERSION=''
@@ -91,15 +100,15 @@ for token in ['Notebook','notebook','Cuaderno','cuaderno','showCurtain','hideCur
 prompt_dir=ROOT/'app/src/main/assets/prompts'
 if prompt_dir.exists() and any(p.is_file() for p in prompt_dir.rglob('*')): fail('legacy prompt asset directory must be absent/empty')
 
-excluded_dirs={'.git','.test-out','.full-java-stub-test','.build-cache','build'}
-excluded_names={'local.properties'}
+excluded_dirs={'.git','.gradle','.idea','.kotlin','.cxx','.externalNativeBuild','gradle','.test-out','.full-java-stub-test','.build-cache','build'}
+excluded_names={'local.properties','gradlew','gradlew.bat'}
 def controlled_files():
     out=[]
     for p in ROOT.rglob('*'):
         if not p.is_file(): continue
         rel=p.relative_to(ROOT)
         if any(x in excluded_dirs for x in rel.parts) or p.name in excluded_names: continue
-        if p.suffix.lower()=='.apk': continue
+        if p.suffix.lower() in {'.apk','.iml'}: continue
         if p.name.startswith('Aleyon-Bridge-') and p.suffix.lower()=='.zip': continue
         if rel.as_posix()=='MANIFEST_SHA256.txt': continue
         out.append(rel.as_posix())
@@ -114,7 +123,7 @@ if manifest.is_file():
         except ValueError: fail(f'invalid manifest row: {line!r}'); continue
         rows[rel]=expected; p=ROOT/rel
         if not p.is_file(): fail(f'manifest references missing file: {rel}')
-        elif hashlib.sha256(p.read_bytes()).hexdigest()!=expected: fail(f'manifest hash mismatch: {rel}')
+        elif hashlib.sha256(canonical_bytes(p)).hexdigest()!=expected: fail(f'manifest hash mismatch: {rel}')
     actual=controlled_files(); listed=sorted(rows)
     for rel in sorted(set(actual)-set(listed)): fail(f'controlled file missing from manifest: {rel}')
     for rel in sorted(set(listed)-set(actual)): fail(f'manifest lists non-controlled/stale file: {rel}')
